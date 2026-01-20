@@ -67,6 +67,11 @@ _cache_at: float = 0.0
 _cache_points: List[List[float]] = []  # [[lat, lon, weight], ...]
 _cache_last_error: Optional[str] = None
 
+# choropleth
+_country_cache_at: float = 0.0
+_country_cache: Dict[str, float] = {}  # {"US": 1234, ...}
+_country_cache_last_error: Optional[str] = None
+
 # duration check to avoid accidental query injection via env
 _DURATION_RE = re.compile(r"^[0-9]+(ms|s|m|h|d|w)$")
 
@@ -164,6 +169,52 @@ def _parse_points(payload: Dict[str, Any]) -> List[List[float]]:
 
     return points
 
+# choropleth
+def _build_country_query() -> str:
+    window = HEATMAP_TIME_WINDOW.strip()
+    if not _DURATION_RE.match(window):
+        log.warning("Invalid HEATMAP_TIME_WINDOW=%r, falling back to 24h", window)
+        window = "24h"
+
+    meas = GEO_MEASUREMENT.replace('"', "")
+    return (
+        f'SELECT SUM("count") AS hits '
+        f'FROM "{meas}" '
+        f'WHERE time > now() - {window} '
+        f'GROUP BY "country_code"'
+    )
+
+def _parse_country_hits(payload: Dict[str, Any]) -> Dict[str, float]:
+    """
+    Influx groups by tags => each series has tags.country_code
+    and values like [time, hits]
+    Return {"US": 1234.0, "TR": 3.0, ...}
+    """
+    out: Dict[str, float] = {}
+
+    results = payload.get("results") or []
+    if not results:
+        return out
+
+    series_list = results[0].get("series") or []
+    for s in series_list:
+        tags = s.get("tags") or {}
+        cc = tags.get("country_code")
+        if not cc:
+            continue
+
+        values = s.get("values") or []
+        hits = 0.0
+        if values and len(values[0]) >= 2 and values[0][1] is not None:
+            try:
+                hits = float(values[0][1])
+            except (ValueError, TypeError):
+                hits = 0.0
+
+        if hits > 0:
+            out[str(cc).upper()] = hits
+
+    return out
 
 @APP.get("/healthz")
 def healthz() -> Dict[str, bool]:
@@ -234,6 +285,51 @@ def data() -> JSONResponse:
 
         return JSONResponse([])
 
+# choropleth
+@APP.get("/data/countries")
+def data_countries() -> JSONResponse:
+    global _country_cache_at, _country_cache, _country_cache_last_error
+
+    now = time.time()
+    if HEATMAP_CACHE_SECONDS > 0 and (now - _country_cache_at) < HEATMAP_CACHE_SECONDS:
+        if DEBUG:
+            log.debug("GET /data/countries cache-hit countries=%s", len(_country_cache))
+        return JSONResponse(_country_cache)
+
+    q = _build_country_query()
+    try:
+        payload = _influx_query(q)
+        hits = _parse_country_hits(payload)
+        _country_cache = hits
+        _country_cache_last_error = None
+        _country_cache_at = now
+
+        log.info("GET /data/countries countries=%s", len(hits))
+        if DEBUG and len(hits) == 0:
+            log.warning("No country hits returned. Check Influx tags/schema/time_window.")
+        return JSONResponse(_country_cache)
+
+    except Exception as e:
+        _country_cache_last_error = repr(e)
+        log.exception("GET /data/countries failed")
+        _country_cache = {}
+        _country_cache_at = now
+
+        if DEBUG:
+            return JSONResponse(
+                {
+                    "error": "influx_query_failed",
+                    "exception": repr(e),
+                    "influx_base": INFLUX_BASE,
+                    "db": INFLUX_DATABASE,
+                    "measurement": GEO_MEASUREMENT,
+                    "window": HEATMAP_TIME_WINDOW,
+                    "query": q,
+                },
+                status_code=502,
+            )
+
+        return JSONResponse({})
 
 @APP.get("/debug/query", response_class=PlainTextResponse)
 def debug_query() -> str:
@@ -241,9 +337,15 @@ def debug_query() -> str:
         return "Not Found"
     return _build_query()
 
+@APP.get("/debug/query/countries", response_class=PlainTextResponse)
+def debug_query_countries() -> str:
+    if not DEBUG:
+        return "Not Found"
+    return _build_country_query()
 
 @APP.get("/debug/last_error", response_class=JSONResponse)
 def debug_last_error() -> JSONResponse:
     if not DEBUG:
         return JSONResponse({"detail": "Not Found"}, status_code=404)
     return JSONResponse({"last_error": _cache_last_error})
+
