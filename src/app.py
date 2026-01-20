@@ -5,10 +5,23 @@ import logging
 from typing import Any, Dict, List, Tuple, Optional
 from urllib.parse import urlencode
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
 import requests
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from rich.logging import RichHandler
+
+# -----------------------------
+# Static files (/static/*)
+# -----------------------------
+STATIC_DIR = os.getenv("STATIC_DIR", "/app/static").strip()
+if Path(STATIC_DIR).is_dir():
+    APP.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    log.info("Serving static files from %s at /static", STATIC_DIR)
+else:
+    log.warning("Static dir missing: %s (country choropleth will not render)", STATIC_DIR)
 
 APP = FastAPI(title="homepage-geoip-heatmap")
 
@@ -20,9 +33,9 @@ DEBUG = os.getenv("DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"
 INFLUX_HOST = os.getenv("INFLUX_HOST", "influxdb")
 INFLUX_HOST_PORT = int(os.getenv("INFLUX_HOST_PORT", "8086"))
 INFLUX_DATABASE = os.getenv("INFLUX_DATABASE", "geoip2influx")
-INFLUX_USER = os.getenv("INFLUX_USER", "").strip()
+INFLUX_USER = os.getenv("INFLUX_USER", "influxer").strip()
 
-INFLUX_PASS_FILE = os.getenv("INFLUX_PASS_FILE", "").strip()
+INFLUX_PASS_FILE = os.getenv("INFLUX_PASS_FILE", "/run/secrets/influxdbv1_pass").strip()
 INFLUX_PASS = os.getenv("INFLUX_PASS", "").strip()  # compatibility fallback
 
 GEO_MEASUREMENT = os.getenv("GEO_MEASUREMENT", "geoip2influx")
@@ -35,6 +48,13 @@ HEATMAP_TITLE = os.getenv("HEATMAP_TITLE", "").strip()
 
 # Internal: base URL to InfluxDB v1
 INFLUX_BASE = f"http://{INFLUX_HOST}:{INFLUX_HOST_PORT}".rstrip("/")
+
+# -----------------------------
+# Serve static assets
+# -----------------------------
+# Your Dockerfile copies src/ -> /app/, so /app/static is the right path in-container.
+if os.path.isdir("/app/static"):
+    APP.mount("/static", StaticFiles(directory="/app/static"), name="static")
 
 # -----------------------------
 # Logging (pretty + simple)
@@ -61,13 +81,12 @@ log.info(
 log.info("Debug mode: %s", DEBUG)
 
 # -----------------------------
-# in-memory cache for /data
+# Caches
 # -----------------------------
 _cache_at: float = 0.0
 _cache_points: List[List[float]] = []  # [[lat, lon, weight], ...]
 _cache_last_error: Optional[str] = None
 
-# choropleth
 _country_cache_at: float = 0.0
 _country_cache: Dict[str, float] = {}  # {"US": 1234, ...}
 _country_cache_last_error: Optional[str] = None
@@ -100,14 +119,12 @@ def _influx_query(q: str) -> Dict[str, Any]:
     params = {"db": INFLUX_DATABASE, "q": q}
     url = f"{INFLUX_BASE}/query?{urlencode(params)}"
 
-    # Important debug visibility
     if DEBUG:
         log.debug("Influx GET %s", url)
         log.debug("InfluxQL: %s", q)
 
     r = requests.get(url, auth=_influx_auth(), timeout=10)
 
-    # If non-2xx, log body (Influx often returns useful JSON errors)
     if r.status_code >= 400:
         body = r.text[:2000]
         log.error("Influx error: HTTP %s body=%s", r.status_code, body)
@@ -116,12 +133,16 @@ def _influx_query(q: str) -> Dict[str, Any]:
     return r.json()
 
 
-def _build_query() -> str:
+def _sanitize_window() -> str:
     window = HEATMAP_TIME_WINDOW.strip()
     if not _DURATION_RE.match(window):
         log.warning("Invalid HEATMAP_TIME_WINDOW=%r, falling back to 24h", window)
         window = "24h"
+    return window
 
+
+def _build_query_points() -> str:
+    window = _sanitize_window()
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -169,13 +190,9 @@ def _parse_points(payload: Dict[str, Any]) -> List[List[float]]:
 
     return points
 
-# choropleth
-def _build_country_query() -> str:
-    window = HEATMAP_TIME_WINDOW.strip()
-    if not _DURATION_RE.match(window):
-        log.warning("Invalid HEATMAP_TIME_WINDOW=%r, falling back to 24h", window)
-        window = "24h"
 
+def _build_query_countries() -> str:
+    window = _sanitize_window()
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -184,12 +201,8 @@ def _build_country_query() -> str:
         f'GROUP BY "country_code"'
     )
 
+
 def _parse_country_hits(payload: Dict[str, Any]) -> Dict[str, float]:
-    """
-    Influx groups by tags => each series has tags.country_code
-    and values like [time, hits]
-    Return {"US": 1234.0, "TR": 3.0, ...}
-    """
     out: Dict[str, float] = {}
 
     results = payload.get("results") or []
@@ -215,6 +228,7 @@ def _parse_country_hits(payload: Dict[str, Any]) -> Dict[str, float]:
             out[str(cc).upper()] = hits
 
     return out
+
 
 @APP.get("/healthz")
 def healthz() -> Dict[str, bool]:
@@ -250,42 +264,23 @@ def data() -> JSONResponse:
             log.debug("GET /data cache-hit points=%s", len(_cache_points))
         return JSONResponse(_cache_points)
 
-    q = _build_query()
+    q = _build_query_points()
     try:
         payload = _influx_query(q)
         pts = _parse_points(payload)
         _cache_points = pts
         _cache_last_error = None
         _cache_at = now
-
         log.info("GET /data points=%s", len(pts))
-        if DEBUG and len(pts) == 0:
-            log.warning("No points returned. Check Influx connection/auth/db/measurement/time_window.")
         return JSONResponse(_cache_points)
-
     except Exception as e:
         _cache_last_error = repr(e)
         log.exception("GET /data failed")
         _cache_points = []
         _cache_at = now
+        return JSONResponse([] if not DEBUG else {"error": "influx_query_failed", "exception": repr(e)}, status_code=502 if DEBUG else 200)
 
-        # In debug, return more detail (still safe-ish: doesn't leak password)
-        if DEBUG:
-            return JSONResponse(
-                {
-                    "error": "influx_query_failed",
-                    "exception": repr(e),
-                    "influx_base": INFLUX_BASE,
-                    "db": INFLUX_DATABASE,
-                    "measurement": GEO_MEASUREMENT,
-                    "window": HEATMAP_TIME_WINDOW,
-                },
-                status_code=502,
-            )
 
-        return JSONResponse([])
-
-# choropleth
 @APP.get("/data/countries")
 def data_countries() -> JSONResponse:
     global _country_cache_at, _country_cache, _country_cache_last_error
@@ -296,56 +291,32 @@ def data_countries() -> JSONResponse:
             log.debug("GET /data/countries cache-hit countries=%s", len(_country_cache))
         return JSONResponse(_country_cache)
 
-    q = _build_country_query()
+    q = _build_query_countries()
     try:
         payload = _influx_query(q)
         hits = _parse_country_hits(payload)
         _country_cache = hits
         _country_cache_last_error = None
         _country_cache_at = now
-
         log.info("GET /data/countries countries=%s", len(hits))
-        if DEBUG and len(hits) == 0:
-            log.warning("No country hits returned. Check Influx tags/schema/time_window.")
         return JSONResponse(_country_cache)
-
     except Exception as e:
         _country_cache_last_error = repr(e)
         log.exception("GET /data/countries failed")
         _country_cache = {}
         _country_cache_at = now
+        return JSONResponse({} if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "query": q}, status_code=502 if DEBUG else 200)
 
-        if DEBUG:
-            return JSONResponse(
-                {
-                    "error": "influx_query_failed",
-                    "exception": repr(e),
-                    "influx_base": INFLUX_BASE,
-                    "db": INFLUX_DATABASE,
-                    "measurement": GEO_MEASUREMENT,
-                    "window": HEATMAP_TIME_WINDOW,
-                    "query": q,
-                },
-                status_code=502,
-            )
-
-        return JSONResponse({})
 
 @APP.get("/debug/query", response_class=PlainTextResponse)
 def debug_query() -> str:
     if not DEBUG:
         return "Not Found"
-    return _build_query()
+    return _build_query_points()
+
 
 @APP.get("/debug/query/countries", response_class=PlainTextResponse)
 def debug_query_countries() -> str:
     if not DEBUG:
         return "Not Found"
-    return _build_country_query()
-
-@APP.get("/debug/last_error", response_class=JSONResponse)
-def debug_last_error() -> JSONResponse:
-    if not DEBUG:
-        return JSONResponse({"detail": "Not Found"}, status_code=404)
-    return JSONResponse({"last_error": _cache_last_error})
-
+    return _build_query_countries()

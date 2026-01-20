@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GeoIP Heatmap</title>
 
-  <!-- CDN assets (pinned) swap to local /static later. -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 
   <style>
@@ -18,9 +17,10 @@
       height: 100%;
       width: 100%;
     }
-    /* keep it clean for iframe */
     .leaflet-control-attribution { display: none; }
     .leaflet-control-container .leaflet-top.leaflet-left { display: none; }
+    .leaflet-control-container .leaflet-top.leaflet-right { display: none; }
+    .leaflet-control-container .leaflet-bottom.leaflet-left { display: none; }
   </style>
 </head>
 <body>
@@ -32,12 +32,105 @@
   <script>
     const map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
 
-    // Dark global tiles (Carto basemaps)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 18
     }).addTo(map);
 
-    // Heat layer (tweak later if you want)
+    // --- Country choropleth (underlay) ---
+    let countriesLayer = null;
+    let countriesGeo = null;          // GeoJSON FeatureCollection
+    let hitsByCountry = {};           // {"US": 123, ...}
+
+    function getCountryCode(props) {
+      // Try common property names from various datasets
+      const candidates = [
+        props.ISO_A2, props.iso_a2, props.ISO2, props.iso2,
+        props.CNTR_CODE, props.country_code, props.CountryCode
+      ];
+      for (const c of candidates) {
+        if (c && typeof c === 'string' && c.length === 2) return c.toUpperCase();
+      }
+      return null;
+    }
+
+    function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function hexToRgb(hex) {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (!m) return [255, 255, 255];
+      return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = (v) => v.toString(16).padStart(2, '0');
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    function rampColor(t) {
+      // “SWAG-ish” feel: off-white/grey -> light blue
+      // You can swap these two hexes to change the whole look.
+      const c0 = hexToRgb('#e6e9ee'); // light grey
+      const c1 = hexToRgb('#69b6ff'); // light blue
+      t = clamp01(t);
+      const r = Math.round(lerp(c0[0], c1[0], t));
+      const g = Math.round(lerp(c0[1], c1[1], t));
+      const b = Math.round(lerp(c0[2], c1[2], t));
+      return rgbToHex(r, g, b);
+    }
+
+    function countryStyle(feature) {
+      const props = feature.properties || {};
+      const code = getCountryCode(props);
+      const hits = (code && hitsByCountry[code]) ? Number(hitsByCountry[code]) : 0;
+
+      // log scale so US/whatever doesn’t drown everything
+      const maxHits = countryStyle._maxHits || 1;
+      const t = Math.log(hits + 1) / Math.log(maxHits + 1);
+
+      return {
+        weight: 0.7,
+        opacity: 0.35,
+        color: '#a9b2bf',
+        fillOpacity: hits > 0 ? 0.22 : 0.06,
+        fillColor: hits > 0 ? rampColor(t) : '#1a2230'
+      };
+    }
+
+    async function loadCountriesGeoJSON() {
+      // Serve this from your container at /static/countries.geojson
+      const res = await fetch('./static/countries.geojson', { cache: 'no-store' });
+      if (!res.ok) throw new Error('countries.geojson missing (GET /static/countries.geojson failed)');
+      return await res.json();
+    }
+
+    async function refreshCountryHits() {
+      const res = await fetch('./data/countries', { cache: 'no-store' });
+      if (!res.ok) throw new Error('GET /data/countries failed');
+      hitsByCountry = await res.json();
+
+      // compute max for normalization
+      let max = 0;
+      for (const k in hitsByCountry) {
+        const v = Number(hitsByCountry[k]) || 0;
+        if (v > max) max = v;
+      }
+      countryStyle._maxHits = Math.max(1, max);
+
+      if (countriesLayer) countriesLayer.setStyle(countryStyle);
+    }
+
+    async function ensureCountriesLayer() {
+      if (countriesLayer) return;
+
+      countriesGeo = await loadCountriesGeoJSON();
+      countriesLayer = L.geoJSON(countriesGeo, {
+        style: countryStyle
+      }).addTo(map);
+    }
+
+    // --- City heat layer (overlay) ---
     const heat = L.heatLayer([], {
       radius: 20,
       blur: 18,
@@ -53,11 +146,23 @@
       }
     }
 
-    async function refreshData() {
+    async function refreshPoints() {
+      const res = await fetch('./data', { cache: 'no-store' });
+      const pts = await res.json(); // [[lat, lon, weight], ...]
+      heat.setLatLngs(pts);
+    }
+
+    async function refreshAll() {
       try {
-        const res = await fetch('./data', { cache: 'no-store' });
-        const pts = await res.json(); // [[lat, lon, weight], ...]
-        heat.setLatLngs(pts);
+        // countries first so the heatmap sits “on top”
+        await ensureCountriesLayer();
+        await refreshCountryHits();
+      } catch (_) {
+        // If you don't have the geojson yet, just skip the country layer.
+      }
+
+      try {
+        await refreshPoints();
       } catch (_) {
         // ignore
       }
@@ -67,9 +172,9 @@
       const cfg = await getConfig();
       if (cfg && cfg.title) document.title = cfg.title;
 
-      await refreshData();
+      await refreshAll();
       const refreshMs = Math.max(5, Number(cfg.refresh_seconds || 30)) * 1000;
-      setInterval(refreshData, refreshMs);
+      setInterval(refreshAll, refreshMs);
     })();
   </script>
 </body>
