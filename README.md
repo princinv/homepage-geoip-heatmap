@@ -52,6 +52,7 @@ This project is intended to be used alongside the following upstream projects:
 - note auth required (authentik, authelia, etc.)
 - create full compose (minimal swag + homepage + influxdb + heatmap)
 - add dark/light mode?
+- add border
 
 ## SCRATCH-SCRATCH
 - lat and long stored as tags not fields, only field is `COUNT`
