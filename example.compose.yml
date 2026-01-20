@@ -40,6 +40,7 @@
       # App runtime
       # -----------------------------
       APP_PORT: "8000"
+      DEBUG: "false"
     read_only: false
     volumes:
       - "${AWDS}/orcastra/modcache:/modcache:rw"

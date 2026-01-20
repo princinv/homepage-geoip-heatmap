@@ -33,6 +33,7 @@ Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embed
 | `HEATMAP_MAX_POINTS` | `20000` | Optional; safety cap for returned points. |
 | `HEATMAP_TITLE` | *(absent)* | Optional; title; omit or leave blank for none. |
 | `APP_PORT` | *8000* | Optional; pecify internal listening port. |
+| `DEBUG` | *false* | Optional |
 
 ## Credits / Upstream Projects
 This project is intended to be used alongside the following upstream projects:
