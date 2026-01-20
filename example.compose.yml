@@ -2,6 +2,7 @@
 # WIP
 
   homepage-geoip-heatmap:
+    user: "0:0"  # TODO temp
     image: ghcr.ioprincinv/homepage-geoip-heatmap:latest
     container_name: homepage-geoip-heatmap
     hostname: homepage-geoip-heatmap
@@ -14,6 +15,7 @@
         target: influxdbv1_pass
         mode: 0o400
     # entrypoint: ["/mnt/scripts/bootstrap.sh"]
+    # entrypoint: ["/entrypoint.sh"]
     environment:
       # -----------------------------
       # InfluxDB (reuse existing vars)
@@ -41,6 +43,8 @@
       # -----------------------------
       APP_PORT: "8000"
       DEBUG: "false"
+      PUID: "1000"
+      PGID: "1000"
     read_only: false
     volumes:
       - "${AWDS}/orcastra/modcache:/modcache:rw"
