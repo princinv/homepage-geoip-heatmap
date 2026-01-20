@@ -5,6 +5,25 @@ PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 APP_PORT="${APP_PORT:-8000}"
 
+# Resolve any VAR_FILE into VAR (if VAR is empty/unset)
+resolve_env_files() {
+  for env_k in $(env | awk -F= '/_FILE=/{print $1}'); do
+    base="${env_k%_FILE}"
+    file_path="$(printenv "$env_k" || true)"
+
+    # Only populate base var if it's empty/unset
+    if [[ -z "${!base:-}" && -n "${file_path:-}" ]]; then
+      if [[ -f "$file_path" ]]; then
+        export "$base"="$(cat "$file_path")"
+      else
+        echo "WARN: ${env_k} points to missing file: ${file_path}" >&2
+      fi
+    fi
+  done
+}
+
+resolve_env_files
+
 # Create group/user if needed
 if ! getent group appgroup >/dev/null 2>&1; then
   groupadd -g "$PGID" appgroup >/dev/null 2>&1 || true
