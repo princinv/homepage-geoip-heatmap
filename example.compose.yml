@@ -2,7 +2,7 @@
 # WIP
 
   homepage-geoip-heatmap:
-    image: princinv/homepage-geoip-heatmap:latest
+    image: ghcr.ioprincinv/homepage-geoip-heatmap:latest
     container_name: homepage-geoip-heatmap
     hostname: homepage-geoip-heatmap
     # Use the same secret you already have for InfluxDB v1
@@ -71,7 +71,7 @@
       replicas: 1
       placement:
         constraints:
-          - "node.labels.hl-node02-proxmox == true"
+          - "node.labels.hl-core-proxmox == true"
       labels:
         compose.version: "full"
         swarm.stack: "proxy"
