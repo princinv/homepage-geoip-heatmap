@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GeoIP Heatmap</title>
+
+  <!-- CDN assets (pinned) swap to local /static later. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0b0f14;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    /* keep it clean for iframe */
+    .leaflet-control-attribution { display: none; }
+    .leaflet-control-container .leaflet-top.leaflet-left { display: none; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <script>
+    const map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
+
+    // Dark global tiles (Carto basemaps)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18
+    }).addTo(map);
+
+    // Heat layer (tweak later if you want)
+    const heat = L.heatLayer([], {
+      radius: 20,
+      blur: 18,
+      maxZoom: 6
+    }).addTo(map);
+
+    async function getConfig() {
+      try {
+        const res = await fetch('./config', { cache: 'no-store' });
+        return await res.json();
+      } catch (_) {
+        return { title: "", refresh_seconds: 30 };
+      }
+    }
+
+    async function refreshData() {
+      try {
+        const res = await fetch('./data', { cache: 'no-store' });
+        const pts = await res.json(); // [[lat, lon, weight], ...]
+        heat.setLatLngs(pts);
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    (async () => {
+      const cfg = await getConfig();
+      if (cfg && cfg.title) document.title = cfg.title;
+
+      await refreshData();
+      const refreshMs = Math.max(5, Number(cfg.refresh_seconds || 30)) * 1000;
+      setInterval(refreshData, refreshMs);
+    })();
+  </script>
+</body>
+</html>

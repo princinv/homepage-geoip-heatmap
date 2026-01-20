@@ -1,0 +1,122 @@
+# example.compose.yml
+# WIP
+
+  homepage-geoip-heatmap:
+    image: princinv/homepage-geoip-heatmap:latest
+    container_name: homepage-geoip-heatmap
+    hostname: homepage-geoip-heatmap
+    # Use the same secret you already have for InfluxDB v1
+    <<:
+      - *security-common
+      - *stop-log-common
+    secrets:
+      - source: influxdbv1_pass
+        target: influxdbv1_pass
+        mode: 0o400
+    # entrypoint: ["/mnt/scripts/bootstrap.sh"]
+    environment:
+      # -----------------------------
+      # InfluxDB (reuse existing vars)
+      # -----------------------------
+      INFLUX_HOST: "${INFLUXDBv1_HOST}"
+      # Use the container-listening port inside the Docker network (usually 8086),
+      # NOT the host-mapped port.
+      INFLUX_HOST_PORT: "8086"
+      INFLUX_DATABASE: "${INFLUXDBv1_GEOIP_DB}"
+      INFLUX_USER: "${INFLUXDBv1_USER}"
+      INFLUX_PASS_FILE: "/run/secrets/influxdbv1_pass"
+      GEO_MEASUREMENT: "geoip2influx"
+
+      # -----------------------------
+      # Heatmap behavior (defaults OK)
+      # -----------------------------
+      HEATMAP_TIME_WINDOW: "24h"
+      HEATMAP_REFRESH_SECONDS: "30"
+      HEATMAP_CACHE_SECONDS: "30"
+      HEATMAP_MAX_POINTS: "20000"
+      # HEATMAP_TITLE: "GeoIP Heatmap"
+
+      # -----------------------------
+      # App runtime
+      # -----------------------------
+      APP_PORT: "8000"
+    read_only: false
+    volumes:
+      - "${AWDS}/orcastra/modcache:/modcache:rw"
+      - "${RWD}/docker-infra/scripts:/mnt/scripts:ro"
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    # Must share a network with InfluxDB and with SWAG (for proxying).
+    # Replace these with your actual external network names.
+    networks:
+      - "${SOCKET_RO_NETWORK}"
+      - "${FRONTEND_NETWORK}"
+# TODO: DO NOT PUBLISH PORTS
+    ports:
+      - target: 8000
+        published: 8000
+        protocol: "tcp"
+        mode: "ingress"
+      # - target: ${SWAG_PORT_2}
+      #   published: ${SWAG_PORT_2}
+      #   protocol: "tcp"
+      #   mode: "ingress"
+      # - target: ${SWAG_PORT_3}
+      #   published: ${SWAG_PORT_3}
+      #   protocol: "tcp"
+      #   mode: "ingress"
+    deploy:  # docker swarm exclusive
+      mode: "replicated"
+      endpoint_mode: "vip"
+      replicas: 1
+      placement:
+        constraints:
+          - "node.labels.hl-node02-proxmox == true"
+      labels:
+        compose.version: "full"
+        swarm.stack: "proxy"
+        orchestration.rebalance: "false"
+        # homepage.group: "proxy"
+        # homepage.name: "CUSTOM"
+        # homepage.icon: "CUSTOM.svg"
+        # homepage.href: "http://geoip-map.${DOMAIN}"
+        # homepage.widget.type: "iframe"
+        # homepage.widget.url: "http://geoip-map.${DOMAIN}"
+        # homepage.description: "geospatial visitor data"
+      <<: *deploy-slow
+    labels:
+      prometheus.io/scrape: "false"
+      swag: "enable"
+      swag_address: "swag"
+      swag_port: "8000"
+      swag_proto: "http"
+      swag_url: "geoip-map.*"
+      swag_auth: "authentik"
+      # swag_server_custom_directive: >
+      #   if ($lan_ip = yes) { set $geo_whitelist yes; };
+      #   if ($geo_whitelist = no) { return 404; };
+      swag_preset_conf: "geoip-map"
+      swag.uptime-kuma.enabled: "true"
+      swag.uptime-kuma.monitor.name: "geoip-map"
+      swag.uptime-kuma.monitor.parent: "proxy"
+      swag.uptime-kuma.monitor.url: "https://geoip-map.${DOMAIN}/healthz"  # TODO: confirm existence
+      swag.uptime-kuma.monitor.type: "https"
+      swag.uptime-kuma.monitor.maxretries: 5
+      swag.uptime-kuma.monitor.accepted_statuscodes: "200-299,404,501"
+      # wud.watch: "true"
+      # wud.watch.digest: "true"
+      # wud.display.name: "swag"
+      # wud.display.icon: "sh-swag"
+      # wud.link.template: "https://github.com/princinv/homepage-geoip-map/releases"
+      # wud.tag.include: '^\d+\.\d+\.\d+$$'
+      # wud.trigger.include: '^4\.0\.\d+$$'  # TODO: 
+    # Basic healthcheck (matches /healthz endpoint)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+        restart: "unless-stopped"  # docker run exclusive
+    # depends_on:  # docker run exlusive
+    #   swag:
+    #     condition: service_healthy
