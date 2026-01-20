@@ -24,23 +24,17 @@ resolve_env_files() {
 
 resolve_env_files
 
-# Create group/user if needed
-if ! getent group appgroup >/dev/null 2>&1; then
-  groupadd -g "$PGID" appgroup >/dev/null 2>&1 || true
+# Ensure a group exists with PGID
+if ! getent group "$PGID" >/dev/null 2>&1; then
+  groupadd -g "$PGID" appgroup
 fi
 
-if ! id appuser >/dev/null 2>&1; then
-  useradd -m -u "$PUID" -g "$PGID" -s /usr/sbin/nologin appuser >/dev/null 2>&1 || true
+# Ensure a user exists with PUID
+if ! getent passwd "$PUID" >/dev/null 2>&1; then
+  useradd -m -u "$PUID" -g "$PGID" -s /usr/sbin/nologin appuser
 fi
 
 # Ensure ownership of app dir (idempotent)
 chown -R "$PUID:$PGID" /app >/dev/null 2>&1 || true
-
-# Secrets: prefer file, then env
-if [[ -z "${INFLUX_PASS:-}" && -n "${INFLUX_PASS_FILE:-}" && -f "${INFLUX_PASS_FILE:-}" ]]; then
-  # Read as root, export into env for the app process
-  INFLUX_PASS="$(cat "${INFLUX_PASS_FILE}")"
-  export INFLUX_PASS
-fi
 
 exec gosu "$PUID:$PGID" uvicorn app:APP --host 0.0.0.0 --port "$APP_PORT"
