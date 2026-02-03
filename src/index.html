@@ -199,10 +199,35 @@
       }
     }
 
+    function pointsBounds(pts) {
+      // pts is [[lat, lon, weight], ...]
+      const latlngs = [];
+      for (const p of (pts || [])) {
+        const lat = Number(p[0]);
+        const lon = Number(p[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        latlngs.push([lat, lon]);
+      }
+      if (latlngs.length === 0) return null;
+      return L.latLngBounds(latlngs);
+    }
+
+    let didInitialFit = false;
+    
     async function refreshPoints() {
       const res = await fetch('/data', { cache: 'no-store' });
       const pts = await res.json();
       heat.setLatLngs(pts);
+    
+      // Fit to where the points actually are (once), so you start zoomed-in.
+      if (!didInitialFit) {
+        const b = pointsBounds(pts);
+        if (b) {
+          map.fitBounds(b.pad(0.25), { animate: false });
+          didInitialFit = true;
+        }
+      }
+    
       return pts.length || 0;
     }
 
