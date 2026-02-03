@@ -21,15 +21,38 @@
     .leaflet-control-container .leaflet-top.leaflet-left { display: none; }
     .leaflet-control-container .leaflet-top.leaflet-right { display: none; }
     .leaflet-control-container .leaflet-bottom.leaflet-left { display: none; }
+
+    /* Small debug pill so we can see what's happening without opening devtools */
+    #debug {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 9999;
+      font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+      color: #cfd8e3;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 8px 10px;
+      max-width: 70vw;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="debug">booting…</div>
 
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
   <script>
+    const dbg = (msg) => {
+      const el = document.getElementById('debug');
+      if (el) el.textContent = msg;
+      console.log('[debug]', msg);
+    };
+
     const map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -42,11 +65,24 @@
     let hitsByCountry = {};           // {"US": 123, ...}
 
     function getCountryCode(props) {
-      // Try common property names from various datasets
+      if (!props) return null;
+
+      // Cover common variants across datasets.
+      // The dataset you referenced often uses "ISO3166-1-Alpha-2" or similar.
       const candidates = [
-        props.ISO_A2, props.iso_a2, props.ISO2, props.iso2,
-        props.CNTR_CODE, props.country_code, props.CountryCode
+        props.ISO_A2, props.iso_a2,
+        props.ISO2, props.iso2,
+        props.ISO, props.iso,
+        props.ISO3166_1_Alpha_2,
+        props.ISO3166_1_ALPHA_2,
+        props["ISO3166-1-Alpha-2"],
+        props["iso3166-1-alpha-2"],
+        props.CNTR_CODE,
+        props.country_code,
+        props.CountryCode,
+        props.ADMIN, // not a code, but fallback debugging
       ];
+
       for (const c of candidates) {
         if (c && typeof c === 'string' && c.length === 2) return c.toUpperCase();
       }
@@ -54,7 +90,6 @@
     }
 
     function clamp01(x) { return Math.max(0, Math.min(1, x)); }
-
     function lerp(a, b, t) { return a + (b - a) * t; }
 
     function hexToRgb(hex) {
@@ -69,8 +104,6 @@
     }
 
     function rampColor(t) {
-      // “SWAG-ish” feel: off-white/grey -> light blue
-      // You can swap these two hexes to change the whole look.
       const c0 = hexToRgb('#e6e9ee'); // light grey
       const c1 = hexToRgb('#69b6ff'); // light blue
       t = clamp01(t);
@@ -85,32 +118,37 @@
       const code = getCountryCode(props);
       const hits = (code && hitsByCountry[code]) ? Number(hitsByCountry[code]) : 0;
 
-      // log scale so US/whatever doesn’t drown everything
       const maxHits = countryStyle._maxHits || 1;
       const t = Math.log(hits + 1) / Math.log(maxHits + 1);
 
+      // Make it MORE visible so it’s obvious when it’s working
+      const active = hits > 0;
+
       return {
-        weight: 0.7,
-        opacity: 0.35,
-        color: '#a9b2bf',
-        fillOpacity: hits > 0 ? 0.22 : 0.06,
-        fillColor: hits > 0 ? rampColor(t) : '#1a2230'
+        weight: active ? 1.0 : 0.4,
+        opacity: active ? 0.55 : 0.20,
+        color: active ? '#cfd8e3' : '#6b7788',
+        fillOpacity: active ? 0.45 : 0.08,
+        fillColor: active ? rampColor(t) : '#1a2230'
       };
     }
 
     async function loadCountriesGeoJSON() {
-      // Serve this from your container at /static/countries.geojson
-      const res = await fetch('./static/countries.geojson', { cache: 'no-store' });
-      if (!res.ok) throw new Error('countries.geojson missing (GET /static/countries.geojson failed)');
-      return await res.json();
+      const url = '/static/countries.geojson';
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`countries.geojson missing: GET ${url} -> HTTP ${res.status}`);
+      }
+      const geo = await res.json();
+      return geo;
     }
 
     async function refreshCountryHits() {
-      const res = await fetch('./data/countries', { cache: 'no-store' });
-      if (!res.ok) throw new Error('GET /data/countries failed');
+      const url = '/data/countries';
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`GET ${url} -> HTTP ${res.status}`);
       hitsByCountry = await res.json();
 
-      // compute max for normalization
       let max = 0;
       for (const k in hitsByCountry) {
         const v = Number(hitsByCountry[k]) || 0;
@@ -125,9 +163,13 @@
       if (countriesLayer) return;
 
       countriesGeo = await loadCountriesGeoJSON();
-      countriesLayer = L.geoJSON(countriesGeo, {
-        style: countryStyle
-      }).addTo(map);
+
+      // quick sanity: show one feature’s property keys to verify our country-code field
+      const first = (countriesGeo && countriesGeo.features && countriesGeo.features[0]) ? countriesGeo.features[0] : null;
+      const keys = first && first.properties ? Object.keys(first.properties) : [];
+      dbg(`countries.geojson loaded. feature0 keys: ${keys.slice(0, 12).join(', ')}${keys.length > 12 ? '…' : ''}`);
+
+      countriesLayer = L.geoJSON(countriesGeo, { style: countryStyle }).addTo(map);
     }
 
     // --- City heat layer (overlay) ---
@@ -139,7 +181,7 @@
 
     async function getConfig() {
       try {
-        const res = await fetch('./config', { cache: 'no-store' });
+        const res = await fetch('/config', { cache: 'no-store' });
         return await res.json();
       } catch (_) {
         return { title: "", refresh_seconds: 30 };
@@ -147,35 +189,49 @@
     }
 
     async function refreshPoints() {
-      const res = await fetch('./data', { cache: 'no-store' });
-      const pts = await res.json(); // [[lat, lon, weight], ...]
+      const res = await fetch('/data', { cache: 'no-store' });
+      const pts = await res.json();
       heat.setLatLngs(pts);
+      return pts.length || 0;
     }
 
     async function refreshAll() {
-      try {
-        // countries first so the heatmap sits “on top”
-        await ensureCountriesLayer();
-        await refreshCountryHits();
-      } catch (_) {
-        // If you don't have the geojson yet, just skip the country layer.
-      }
+      let countryCount = 0;
+      let pointCount = 0;
 
-      try {
-        await refreshPoints();
-      } catch (_) {
-        // ignore
-      }
+      // Countries (underlay)
+      await ensureCountriesLayer();
+      await refreshCountryHits();
+      countryCount = Object.keys(hitsByCountry || {}).length;
+
+      // Cities (overlay)
+      pointCount = await refreshPoints();
+
+      dbg(`ok. countries=${countryCount}  points=${pointCount}  maxHits=${countryStyle._maxHits || 1}`);
     }
 
     (async () => {
       const cfg = await getConfig();
       if (cfg && cfg.title) document.title = cfg.title;
 
-      await refreshAll();
+      try {
+        await refreshAll();
+      } catch (e) {
+        dbg(`ERROR: ${e && e.message ? e.message : String(e)}`);
+        throw e;
+      }
+
       const refreshMs = Math.max(5, Number(cfg.refresh_seconds || 30)) * 1000;
-      setInterval(refreshAll, refreshMs);
+      setInterval(async () => {
+        try {
+          await refreshAll();
+        } catch (e) {
+          dbg(`ERROR: ${e && e.message ? e.message : String(e)}`);
+        }
+      }, refreshMs);
     })();
   </script>
 </body>
 </html>
+
+
