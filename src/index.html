@@ -68,8 +68,23 @@
     // Clamp panning to one world copy (prevents drifting into repeats)
     const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
     map.setMaxBounds(worldBounds);
-    map.setMinZoom(2);
-
+    
+    // Dynamically pick a minZoom so the world fills the container width (no grey side bars)
+    function updateMinZoomToFillWidth() {
+      const w = map.getSize().x;          // container width in px
+      const tile = 256;                   // Leaflet base tile size
+      const needed = Math.ceil(Math.log2(w / tile)); // zoom where world px >= container px
+      const minZ = Math.max(2, needed);   // keep your original floor if you want
+      map.setMinZoom(minZ);
+    
+      if (map.getZoom() < minZ) {
+        map.setZoom(minZ, { animate: false });
+      }
+    }
+    
+    updateMinZoomToFillWidth();
+    map.on('resize', updateMinZoomToFillWidth);
+    
     // Country choropleth (underlay)
     let countriesLayer = null;
     let countriesGeo = null;          // GeoJSON FeatureCollection
