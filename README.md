@@ -67,11 +67,11 @@ This project is intended to be used alongside the following upstream projects:
 - [x] ~~Add dark/light mode (`preferred-color-scheme` + toggle + env var)~~
 - [x] ~~Add time window selector~~
 - [x] ~~Add country-level *tooltip* (hits w/ percentage)~~
+- [x] ~~Add query params for broader reusability (grafana/other dashboards)~~
+  - ~~`?mode=clean` → no labels, no HUD~~
+  - ~~`?mode=full` → HUD + legend + stats~~
+  - ~~`?mode=map-only`~~
 - [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
-- [ ] Add query params for broader reusability (grafana/other dashboards)
-  - `?mode=clean` → no labels, no HUD
-  - `?mode=full` → HUD + legend + stats
-  - `?mode=map-only`
 - [ ] Create full compose example (minimal swag + homepage + influxdb + heatmap)
 - [ ] Move away from CDN eventually (self-host JS/CSS by vendoring them into `/static/vendor/...`
 
