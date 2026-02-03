@@ -53,25 +53,24 @@
       console.log('[debug]', msg);
     };
 
-    const worldBounds = [
-      [-85, -180],
-      [ 85,  180]
-    ];
-    
     const map = L.map('map', {
       zoomControl: false,
-      minZoom: 2,
-      maxZoom: 18,              // match your tile layer
-      maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0,  // hard lock
-      worldCopyJump: true       // prevents endless copies
+      worldCopyJump: false,  // don't jump copies
+      maxBoundsViscosity: 1.0
     }).setView([20, 0], 2);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18
+      maxZoom: 18,
+      noWrap: true,     // prevents horizontal world repeat
+      bounds: [[-85, -180], [85, 180]]
     }).addTo(map);
 
-    // --- Country choropleth (underlay) ---
+    // Clamp panning to one world copy (prevents drifting into repeats)
+    const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+    map.setMaxBounds(worldBounds);
+    map.setMinZoom(2);
+
+    // Country choropleth (underlay)
     let countriesLayer = null;
     let countriesGeo = null;          // GeoJSON FeatureCollection
     let hitsByCountry = {};           // {"US": 123, ...}
@@ -184,7 +183,7 @@
       countriesLayer = L.geoJSON(countriesGeo, { style: countryStyle }).addTo(map);
     }
 
-    // --- City heat layer (overlay) ---
+    // City heat layer (overlay)
     const heat = L.heatLayer([], {
       radius: 20,
       blur: 18,
