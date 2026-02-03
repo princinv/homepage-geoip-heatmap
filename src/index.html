@@ -8,14 +8,36 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 
   <style>
+    :root {
+      --bg: #0b0f14;
+      --border: rgba(255,255,255,0.12);
+      --pill-bg: rgba(0,0,0,0.55);
+      --pill-border: rgba(255,255,255,0.12);
+      --pill-text: #cfd8e3;
+      --country-stroke: #6b7788;
+      --country-stroke-active: #cfd8e3;
+      --country-fill-idle: #1a2230;
+    }
+  
+    :root[data-theme="light"] {
+      --bg: #f4f6f8;
+      --border: rgba(0,0,0,0.12);
+      --pill-bg: rgba(255,255,255,0.85);
+      --pill-border: rgba(0,0,0,0.12);
+      --pill-text: #1a2230;
+      --country-stroke: rgba(26,34,48,0.35);
+      --country-stroke-active: rgba(26,34,48,0.70);
+      --country-fill-idle: rgba(26,34,48,0.06);
+    }
+  
     html, body {
       height: 100%;
       margin: 0;
-      background: #0b0f14;
+      background: var(--bg);
   
       /* Window border */
       box-sizing: border-box;
-      border: 2px solid rgba(255,255,255,0.12);
+      border: 2px solid var(--border);
       overflow: hidden; /* prevents tiny scrollbars */
     }
   
@@ -31,26 +53,46 @@
     .leaflet-control-container .leaflet-top.leaflet-right { display: none; }
     .leaflet-control-container .leaflet-bottom.leaflet-left { display: none; }
   
-    /* Small debug pill to see what's happening without opening devtools */
+    /* Small debug pill */
     #debug {
       position: absolute;
       left: 12px;
       bottom: 12px;
       z-index: 9999;
       font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
-      color: #cfd8e3;
-      background: rgba(0,0,0,0.55);
-      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--pill-text);
+      background: var(--pill-bg);
+      border: 1px solid var(--pill-border);
       border-radius: 10px;
       padding: 8px 10px;
       max-width: 70vw;
       white-space: pre-wrap;
     }
+  
+    /* Theme toggle pill */
+    #themeToggle {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 9999;
+      font: 12px/1 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+      color: var(--pill-text);
+      background: var(--pill-bg);
+      border: 1px solid var(--pill-border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+  
+    #themeToggle:hover { filter: brightness(1.08); }
+    #themeToggle:active { transform: translateY(1px); }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div id="debug">booting…</div>
+  <button id="themeToggle" type="button" aria-label="Toggle theme">auto</button>
 
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
@@ -62,17 +104,83 @@
       console.log('[debug]', msg);
     };
 
+    const THEME_KEY = 'geoip_theme_mode'; // remembers user's choice
+    
+    function normalizeMode(x) {
+      x = String(x || '').toLowerCase();
+      return (x === 'dark' || x === 'light' || x === 'auto') ? x : 'auto';
+    }
+    
+    function systemTheme() {
+      return (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+        ? 'light'
+        : 'dark';
+    }
+    
+    function applyTheme(mode) {
+      mode = normalizeMode(mode);
+      const resolved = (mode === 'auto') ? systemTheme() : mode;
+      
+      document.documentElement.dataset.theme = resolved; // drives CSS vars
+      setTiles(resolved);                                 // swaps basemap
+    
+      if (countriesLayer) countriesLayer.setStyle(countryStyle);
+
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = mode; // show selected mode (auto/dark/light)
+    }
+    
+    function cycleMode(mode) {
+      mode = normalizeMode(mode);
+      if (mode === 'auto') return 'dark';
+      if (mode === 'dark') return 'light';
+      return 'auto';
+    }
+    
+    function bindThemeToggle(initialMode) {
+      const btn = document.getElementById('themeToggle');
+      if (!btn) return;
+    
+      let mode = normalizeMode(initialMode);
+      applyTheme(mode);
+    
+      btn.addEventListener('click', () => {
+        mode = cycleMode(mode);
+        localStorage.setItem(THEME_KEY, mode);
+        applyTheme(mode);
+      });
+    
+      // live-update when OS theme changes and we're in auto
+      const mql = window.matchMedia('(prefers-color-scheme: light)');
+      const onChange = () => {
+        const saved = normalizeMode(localStorage.getItem(THEME_KEY) || mode);
+        if (saved === 'auto') applyTheme('auto');
+      };
+      if (mql && mql.addEventListener) mql.addEventListener('change', onChange);
+      else if (mql && mql.addListener) mql.addListener(onChange);
+    }
+
     const map = L.map('map', {
       zoomControl: false,
       worldCopyJump: false,  // don't jump copies
       maxBoundsViscosity: 1.0
     }).setView([20, 0], 2);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18,
-      noWrap: true,     // prevents horizontal world repeat
-      bounds: [[-85, -180], [85, 180]]
-    }).addTo(map);
+    const tiles = {
+      dark:  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 18, noWrap: true, bounds: [[-85, -180], [85, 180]]
+      }),
+      light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 18, noWrap: true, bounds: [[-85, -180], [85, 180]]
+      }),
+    };
+    
+    let activeTiles = null;
+    function setTiles(kind) {
+      if (activeTiles) map.removeLayer(activeTiles);
+      activeTiles = tiles[kind] || tiles.dark;
+      activeTiles.addTo(map);
+    }
 
     // Clamp panning to one world copy (prevents drifting into repeats)
     const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
@@ -148,6 +256,11 @@
       return rgbToHex(r, g, b);
     }
 
+    function cssVar(name, fallback) {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    }
+
     function countryStyle(feature) {
       const props = feature.properties || {};
       const code = getCountryCode(props);
@@ -159,12 +272,16 @@
       // Make it MORE visible so it’s obvious when it’s working
       const active = hits > 0;
 
+      const strokeIdle = cssVar('--country-stroke', '#6b7788');
+      const strokeActive = cssVar('--country-stroke-active', '#cfd8e3');
+      const fillIdle = cssVar('--country-fill-idle', '#1a2230');
+      
       return {
         weight: active ? 1.0 : 0.4,
         opacity: active ? 0.55 : 0.20,
-        color: active ? '#cfd8e3' : '#6b7788',
+        color: active ? strokeActive : strokeIdle,
         fillOpacity: active ? 0.45 : 0.08,
-        fillColor: active ? rampColor(t) : '#1a2230'
+        fillColor: active ? rampColor(t) : fillIdle
       };
     }
 
@@ -274,6 +391,13 @@
       const cfg = await getConfig();
       if (cfg && cfg.title) document.title = cfg.title;
 
+      // cfg.theme_mode should come from backend env var THEME_MODE, default "auto"
+      const cfgMode = normalizeMode(cfg && cfg.theme_mode ? cfg.theme_mode : 'auto');
+      const rawSaved = localStorage.getItem(THEME_KEY);
+      const initialMode = rawSaved ? normalizeMode(rawSaved) : cfgMode;
+      
+      bindThemeToggle(initialMode);
+      
       try {
         await refreshAll();
       } catch (e) {

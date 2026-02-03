@@ -27,6 +27,9 @@ INFLUX_USER = os.getenv("INFLUX_USER", "influxer").strip()
 INFLUX_PASS_FILE = os.getenv("INFLUX_PASS_FILE", "/run/secrets/influxdbv1_pass").strip()
 INFLUX_PASS = os.getenv("INFLUX_PASS", "").strip()  # compatibility fallback
 
+# Internal: base URL to InfluxDB v1
+INFLUX_BASE = f"http://{INFLUX_HOST}:{INFLUX_HOST_PORT}".rstrip("/")
+
 GEO_MEASUREMENT = os.getenv("GEO_MEASUREMENT", "geoip2influx")
 
 HEATMAP_TIME_WINDOW = os.getenv("HEATMAP_TIME_WINDOW", "24h")
@@ -35,8 +38,9 @@ HEATMAP_CACHE_SECONDS = int(os.getenv("HEATMAP_CACHE_SECONDS", "30"))
 HEATMAP_MAX_POINTS = int(os.getenv("HEATMAP_MAX_POINTS", "20000"))
 HEATMAP_TITLE = os.getenv("HEATMAP_TITLE", "").strip()
 
-# Internal: base URL to InfluxDB v1
-INFLUX_BASE = f"http://{INFLUX_HOST}:{INFLUX_HOST_PORT}".rstrip("/")
+THEME_MODE = os.getenv("THEME_MODE", "auto").strip().lower()
+if THEME_MODE not in {"auto", "dark", "light"}:
+    THEME_MODE = "auto"
 
 # -----------------------------
 # Logging (pretty + simple)
@@ -244,6 +248,7 @@ def config() -> Dict[str, Any]:
         "refresh_seconds": HEATMAP_REFRESH_SECONDS,
         "time_window": HEATMAP_TIME_WINDOW,
         "max_points": HEATMAP_MAX_POINTS,
+        "theme_mode": THEME_MODE,
     }
 
 

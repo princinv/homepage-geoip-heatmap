@@ -28,6 +28,7 @@ Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embed
 | `HEATMAP_CACHE_SECONDS` | `30` | Server-side caching for `/data` (seconds). |
 | `HEATMAP_MAX_POINTS` | `20000` | Optional; safety cap for returned points. |
 | `HEATMAP_TITLE` | *(absent)* | Optional; title; omit or leave blank for none. |
+| `THEME_MODE` | `auto` | Optional; set dark/light mode deterministically. |
 | `PUID` | *1000* | Optional |
 | `PGID` | *1000* | Optional |
 | `APP_PORT` | *8000* | Optional; specify internal listening port. |
