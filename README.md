@@ -32,6 +32,20 @@ Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embed
       - `full`: shows full UI (debug/toggles/HUD placeholders)
       - `map-only`: intended for embedded/readonly display (UI hidden; map interactions can be disabled)
 
+## Screenshots
+<table>
+  <tr>
+    <td style="vertical-align: top; width: 50%;">
+      <img src="assets/homepage-geoip-heatmap_iframe_dark.png" alt="Homepage GeoIP heatmap (iframe, dark)" width="100%">
+    </td>
+    <td style="vertical-align: top; width: 50%;">
+      <img src="assets/homepage-geoip-heatmap_dark.png" alt="Homepage GeoIP heatmap (dark)" width="100%">
+      <br>
+      <img src="assets/homepage-geoip-heatmap_light.png" alt="Homepage GeoIP heatmap (light)" width="100%">
+    </td>
+  </tr>
+</table>
+
 ## Environment
 | Variable | Default | Notes |
 |---|---:|---|
