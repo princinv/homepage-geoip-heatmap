@@ -68,7 +68,36 @@
       max-width: 70vw;
       white-space: pre-wrap;
     }
-  
+
+    /* HUD overlay */
+    #hud {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 9999;
+    
+      color: var(--pill-text);
+      background: var(--pill-bg);
+      border: 1px solid var(--pill-border);
+      border-radius: 12px;
+      padding: 10px 12px;
+    
+      font: 12px/1.25 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+      max-width: min(420px, calc(100vw - 24px));
+    }
+    
+    #hud .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 2px 0;
+    }
+    
+    #hud .muted { opacity: 0.85; }
+    #hud .sep { height: 1px; background: var(--pill-border); margin: 8px 0; }
+    #hud .toplist { margin: 0; padding-left: 16px; }
+    #hud .toplist li { margin: 2px 0; }
+
     /* Theme toggle pill */
     #themeToggle {
       position: absolute;
@@ -109,6 +138,7 @@
 <body>
   <div id="map"></div>
   <div id="debug">booting…</div>
+  <div id="hud" aria-label="Stats HUD"></div>
 
   <select id="windowSelect" aria-label="Time window">
     <option value="1h">1h</option>
@@ -117,6 +147,8 @@
     <option value="7d">7d</option>
     <option value="30d">30d</option>
   </select>
+
+  <button id="themeToggle" ...>auto</button>
 
   <button id="themeToggle" type="button" aria-label="Toggle theme">auto</button>
 
@@ -145,7 +177,7 @@
         showLegend: mode === 'full',
         mapOnly: mode === 'map-only',
     
-        // NEW: optional overrides
+        // optional overrides
         window: p.get('window') || null,     // e.g. 24h, 7d
         theme: p.get('theme') || null,       // dark|light|auto
         refresh: p.get('refresh') || null,   // seconds
@@ -161,9 +193,9 @@
     setVisible('debug', Q.showDebug);
     setVisible('themeToggle', Q.showThemeToggle);
     
-    // If you later add a HUD div like <div id="hud"></div>:
+    // TODO: If you later add a HUD div like <div id="hud"></div>:
     setVisible('hud', Q.showHud);
-    // If you later add a legend div like <div id="legend"></div>:
+    // TODO: If you later add a legend div like <div id="legend"></div>:
     setVisible('legend', Q.showLegend);
 
     const THEME_KEY = 'geoip_theme_mode'; // remembers user's choice
@@ -394,11 +426,13 @@
         if (v > max) max = v;
         total += v;
       }
-    
+
       totalCountryHits = total;
       countryStyle._maxHits = Math.max(1, max);
-    
+      
       if (countriesLayer) countriesLayer.setStyle(countryStyle);
+      
+      renderHud();
     }
 
     function formatNumber(n) {
@@ -411,6 +445,36 @@
       return props.ADMIN || props.name || props.NAME || props.Name || 'Unknown';
     }
     
+    function renderHud() {
+      if (!Q.showHud) return;
+    
+      const hud = document.getElementById('hud');
+      if (!hud) return;
+    
+      const entries = Object.entries(hitsByCountry || [])
+        .map(([cc, v]) => [cc, Number(v) || 0])
+        .filter(([, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1]);
+    
+      const top = entries.slice(0, 8);
+    
+      const topHtml = top.length
+        ? `<ol class="toplist">${top.map(([cc, v]) => {
+            const pct = totalCountryHits > 0 ? (v / totalCountryHits) * 100 : 0;
+            return `<li><span class="muted">${cc}</span> — ${formatNumber(v)} <span class="muted">(${pct.toFixed(1)}%)</span></li>`;
+          }).join('')}</ol>`
+        : `<div class="muted">No country hits in this window.</div>`;
+    
+      hud.innerHTML = `
+        <div class="row"><div class="muted">Window</div><div>${getWindow()}</div></div>
+        <div class="row"><div class="muted">Countries</div><div>${Object.keys(hitsByCountry || {}).length}</div></div>
+        <div class="row"><div class="muted">Hits</div><div>${formatNumber(totalCountryHits)}</div></div>
+        <div class="sep"></div>
+        <div class="muted" style="margin-bottom:4px;">Top countries</div>
+        ${topHtml}
+      `;
+    }
+
     function tooltipText(feature) {
       const props = feature.properties || {};
       const code = getCountryCode(props);
