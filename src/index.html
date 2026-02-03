@@ -148,8 +148,6 @@
     <option value="30d">30d</option>
   </select>
 
-  <button id="themeToggle" ...>auto</button>
-
   <button id="themeToggle" type="button" aria-label="Toggle theme">auto</button>
 
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -157,15 +155,6 @@
 
   <script>
     const Q = getQuery();
-
-    // TODO: temp debug
-    (() => {
-      const h = document.getElementById('hud');
-      if (h) {
-        h.style.display = '';
-        h.innerHTML = 'HUD mount OK';
-      }
-    })();
 
     const dbg = (msg) => {
       if (!Q.showDebug) return;
@@ -176,20 +165,20 @@
 
     function getQuery() {
       const p = new URLSearchParams(window.location.search || '');
-      const mode = (p.get('mode') || '').toLowerCase();
+      const raw = (p.get('mode') || '').toLowerCase();
+      const mode = raw || 'full'; // <- IMPORTANT
     
       return {
-        mode: mode || 'full',
+        mode,
         showDebug: mode !== 'clean' && mode !== 'map-only',
         showThemeToggle: mode !== 'clean' && mode !== 'map-only',
         showHud: mode === 'full',
         showLegend: mode === 'full',
         mapOnly: mode === 'map-only',
     
-        // optional overrides
-        window: p.get('window') || null,     // e.g. 24h, 7d
-        theme: p.get('theme') || null,       // dark|light|auto
-        refresh: p.get('refresh') || null,   // seconds
+        window: p.get('window') || null,
+        theme: p.get('theme') || null,
+        refresh: p.get('refresh') || null,
       };
     }
     
