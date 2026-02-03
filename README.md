@@ -48,8 +48,8 @@ This project is intended to be used alongside the following upstream projects:
 - [x] ~~Add border~~
 - [x] ~~Add dark/light mode (`preferred-color-scheme` + toggle + env var)~~
 - [x] ~~Add time window selector~~
+- [x] ~~Add country-level *tooltip* (hits w/ percentage)~~
 - [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
-- [ ] Add country-level *tooltip* (hits w/ percentage)
 - [ ] Add query params for broader reusability (grafana/other dashboards)
   - `?mode=clean` → no labels, no HUD
   - `?mode=full` → HUD + legend + stats

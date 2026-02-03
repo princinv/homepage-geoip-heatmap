@@ -244,6 +244,7 @@
     let countriesLayer = null;
     let countriesGeo = null;          // GeoJSON FeatureCollection
     let hitsByCountry = {};           // {"US": 123, ...}
+    let totalCountryHits = 0;         // total hits across all countries (for %)
 
     function getCountryCode(props) {
       if (!props) return null;
@@ -338,15 +339,45 @@
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`GET ${url} -> HTTP ${res.status}`);
       hitsByCountry = await res.json();
-
+    
       let max = 0;
+      let total = 0;
+    
       for (const k in hitsByCountry) {
         const v = Number(hitsByCountry[k]) || 0;
         if (v > max) max = v;
+        total += v;
       }
+    
+      totalCountryHits = total;
       countryStyle._maxHits = Math.max(1, max);
-
+    
       if (countriesLayer) countriesLayer.setStyle(countryStyle);
+    }
+
+    function formatNumber(n) {
+      const x = Number(n) || 0;
+      return x.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+    
+    function getCountryName(props) {
+      if (!props) return 'Unknown';
+      return props.ADMIN || props.name || props.NAME || props.Name || 'Unknown';
+    }
+    
+    function tooltipText(feature) {
+      const props = feature.properties || {};
+      const code = getCountryCode(props);
+      const name = getCountryName(props);
+    
+      const hits = (code && hitsByCountry[code]) ? Number(hitsByCountry[code]) : 0;
+      const pct = (totalCountryHits > 0) ? (hits / totalCountryHits) * 100 : 0;
+    
+      // Only show % if we have totals; keep it clean when 0
+      if (hits > 0 && totalCountryHits > 0) {
+        return `${name}: ${formatNumber(hits)} (${pct.toFixed(1)}%)`;
+      }
+      return `${name}: 0`;
     }
 
     async function ensureCountriesLayer() {
@@ -359,7 +390,46 @@
       const keys = first && first.properties ? Object.keys(first.properties) : [];
       dbg(`countries.geojson loaded. feature0 keys: ${keys.slice(0, 12).join(', ')}${keys.length > 12 ? '…' : ''}`);
 
-      countriesLayer = L.geoJSON(countriesGeo, { style: countryStyle }).addTo(map);
+      countriesLayer = L.geoJSON(countriesGeo, {
+        style: countryStyle,
+        onEachFeature: (feature, layer) => {
+          layer.bindTooltip(() => tooltipText(feature), {
+            sticky: true,        // follows pointer on desktop
+            direction: 'auto',
+            opacity: 0.95
+          });
+      
+          // Desktop hover highlight
+          layer.on('mouseover', () => {
+            layer.setStyle({ weight: 1.5, opacity: 0.85 });
+            layer.bringToFront();
+            layer.openTooltip();
+          });
+      
+          layer.on('mouseout', () => {
+            countriesLayer.resetStyle(layer);
+            layer.closeTooltip();
+          });
+      
+          // Mobile/Touch: tap to toggle tooltip
+          layer.on('click', (e) => {
+            // Close any other open tooltips (optional but nice)
+            if (countriesLayer && countriesLayer.eachLayer) {
+              countriesLayer.eachLayer((l) => {
+                if (l !== layer && l.closeTooltip) l.closeTooltip();
+              });
+            }
+      
+            // Toggle this one
+            const isOpen = layer.isTooltipOpen && layer.isTooltipOpen();
+            if (isOpen) {
+              layer.closeTooltip();
+            } else {
+              layer.openTooltip(e.latlng);
+            }
+          });
+        }
+      }).addTo(map);
     }
 
     // City heat layer (overlay)
