@@ -158,6 +158,15 @@
   <script>
     const Q = getQuery();
 
+    // TODO: temp debug
+    (() => {
+      const h = document.getElementById('hud');
+      if (h) {
+        h.style.display = '';
+        h.innerHTML = 'HUD mount OK';
+      }
+    })();
+
     const dbg = (msg) => {
       if (!Q.showDebug) return;
       const el = document.getElementById('debug');
