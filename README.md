@@ -46,7 +46,7 @@ This project is intended to be used alongside the following upstream projects:
 - [x] Highlight country
 - [x] Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`
 - [x] Add border
-- [ ] Add dark/light mode (`preferred-color-scheme` + toggle + env var)
+- [x] Add dark/light mode (`preferred-color-scheme` + toggle + env var)
 - [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
 - [ ] Add time window selector
 - [ ] Add country-level *tooltip* (hits w/ percentage)
