@@ -1,21 +1,17 @@
-# homepage-geoip-heatmap
-
+![homepage-geoip-heatmap banner](assets/banner.png)
 ---
 WIP: project under active development.
----
-## Status
-Not functional yet.
 ---
 
 Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embedded into the [Homepage](https://github.com/gethomepage/homepage) dashboard. The intent is to use GeoIP access log data stored in InfluxDB v1 (via the SWAG GeoIP tooling / mods) and render it as a standalone map view.
 
-## Prerequisites
-- swag reverse proxy
-- geoip2influxdb docker mod
-- maxmind docker mod
+**NOT** designed to be exposed publicly without auth.
 
-## Assumptions
-- swag with geoip2influxdb fully configured
+## Prerequisites
+- **GetHomepage** dashboard docker container
+- Linuxserver.io's **SWAG (Secure Web Application Gateway)** docker container
+- Linuxserver.io's **geoip2influxdb docker mod** (fully configured)
+- Linuxserver.io's **maxmind docker mod** (fully configured)
 
 ## Environment
 | Variable | Default | Notes |
@@ -45,15 +41,15 @@ This project is intended to be used alongside the following upstream projects:
 - linuxserver.io SWAG dashboard / Geoip2influxdb ecosystem: https://github.com/linuxserver/docker-mods
 - InfluxDB v1 (time series backend): https://github.com/influxdata/influxdb
 
-# SCRATCH
-- full secrets integration for vars
-- move away from cdn eventually
-- derive certain vars from swag container?
-- note auth required (authentik, authelia, etc.)
-- create full compose (minimal swag + homepage + influxdb + heatmap)
-- add dark/light mode?
-- add border
+# ROADMAP
+- [x] Highlight country
+- [ ] Move away from CDN eventually (self-host JS/CSS by vendoring them into `/static/vendor/...`
+- [ ] Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`
+- [ ] Add border
+- [ ] Add dark/light mode (`preferred-color-scheme` + toggle + env var)
+- [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
+- [ ] Create full compose example (minimal swag + homepage + influxdb + heatmap)
 
-## SCRATCH-SCRATCH
+## SCRATCH
 - lat and long stored as tags not fields, only field is `COUNT`
-- add certificate expiration? other metrics?
+- add certificate expiration?
