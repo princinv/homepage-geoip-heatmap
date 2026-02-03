@@ -43,7 +43,7 @@ This project is intended to be used alongside the following upstream projects:
 
 # ROADMAP
 - [x] Highlight country
-- [ ] Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`
+- [x] Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`
 - [ ] Add border
 - [ ] Add dark/light mode (`preferred-color-scheme` + toggle + env var)
 - [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
