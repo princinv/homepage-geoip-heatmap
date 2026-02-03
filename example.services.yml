@@ -1,2 +1,11 @@
 # example.services.yml
-# WIP
+
+- GeoIP:
+    - Heatmap:
+        href: https://geoip.your.domain
+        widget:
+          type: iframe
+          name: swagMap
+          src: https://geoip.your.domain
+          allowScrolling: yes
+          classes: h-screen sm:h-screen md:h-screen lg:h-screen xl:h-screen 2xl:h-screen
