@@ -71,7 +71,7 @@ This project is intended to be used alongside the following upstream projects:
   - ~~`?mode=clean` → no labels, no HUD~~
   - ~~`?mode=full` → HUD + legend + stats~~
   - ~~`?mode=map-only`~~
-- [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
+- [x] ~~Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`~~
 - [ ] Create full compose example (minimal swag + homepage + influxdb + heatmap)
 - [ ] Move away from CDN eventually (self-host JS/CSS by vendoring them into `/static/vendor/...`
 
