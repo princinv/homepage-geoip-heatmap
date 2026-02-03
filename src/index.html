@@ -12,16 +12,25 @@
       height: 100%;
       margin: 0;
       background: #0b0f14;
+  
+      /* Window border */
+      box-sizing: border-box;
+      border: 2px solid rgba(255,255,255,0.12);
+      overflow: hidden; /* prevents tiny scrollbars */
     }
+  
+    *, *::before, *::after { box-sizing: inherit; }
+  
     #map {
       height: 100%;
       width: 100%;
     }
+  
     .leaflet-control-attribution { display: none; }
     .leaflet-control-container .leaflet-top.leaflet-left { display: none; }
     .leaflet-control-container .leaflet-top.leaflet-right { display: none; }
     .leaflet-control-container .leaflet-bottom.leaflet-left { display: none; }
-
+  
     /* Small debug pill to see what's happening without opening devtools */
     #debug {
       position: absolute;
