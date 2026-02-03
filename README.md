@@ -17,7 +17,7 @@ Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embed
 - Time window selector
 - Country-level *tooltip* displaying hits as an absolute number and as a percentage of total hits.
 - Dark/light mode toggle
-- HUD featuring ...
+- HUD featuring time window, total visitor countries, total hits, and lists the top 8 countries. 
 - Query parameters
   - window (optional)
     - Applies to: `GET /data` and `GET /data/countries`
