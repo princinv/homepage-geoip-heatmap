@@ -42,14 +42,18 @@ This project is intended to be used alongside the following upstream projects:
 - linuxserver.io SWAG dashboard / Geoip2influxdb ecosystem: https://github.com/linuxserver/docker-mods
 - InfluxDB v1 (time series backend): https://github.com/influxdata/influxdb
 
-# ROADMAP
-- [x] Highlight country
-- [x] Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`
-- [x] Add border
-- [x] Add dark/light mode (`preferred-color-scheme` + toggle + env var)
+# Roadmap
+- [x] ~~Highlight country~~
+- [x] ~~Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`~~
+- [x] ~~Add border~~
+- [x] ~~Add dark/light mode (`preferred-color-scheme` + toggle + env var)~~
+- [x] ~~Add time window selector~~
 - [ ] Add HUD overlay (visitors, hits, top countries, etc.) at `/data/countries`
-- [ ] Add time window selector
 - [ ] Add country-level *tooltip* (hits w/ percentage)
+- [ ] Add query params for broader reusability (grafana/other dashboards)
+  - `?mode=clean` → no labels, no HUD
+  - `?mode=full` → HUD + legend + stats
+  - `?mode=map-only`
 - [ ] Create full compose example (minimal swag + homepage + influxdb + heatmap)
 - [ ] Move away from CDN eventually (self-host JS/CSS by vendoring them into `/static/vendor/...`
 
@@ -57,9 +61,5 @@ This project is intended to be used alongside the following upstream projects:
 - lat and long stored as tags not fields, only field is `COUNT`
 - add certificate expiration?
 - add heatmap intensity toggle?
-- slider biases rendering toward city heat (radius/opacity up) or country choropleth (fillOpacity up)
-- legend + scale
-- Add query params for broader reusability (grafana/other dashboards)
-  - `?mode=clean` → no labels, no HUD
-  - `?mode=full` → HUD + legend + stats
-  - `?mode=map-only`
+- slider biases rendering toward city heat (radius/opacity up) or country choropleth (fillOpacity up)?
+- legend + scale?

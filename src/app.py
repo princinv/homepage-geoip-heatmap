@@ -89,13 +89,11 @@ else:
 # -----------------------------
 # Caches
 # -----------------------------
-_cache_at: float = 0.0
-_cache_points: List[List[float]] = []  # [[lat, lon, weight], ...]
-_cache_last_error: Optional[str] = None
+_cache_points_by_window: Dict[str, Tuple[float, List[List[float]]]] = {}
+_country_cache_by_window: Dict[str, Tuple[float, Dict[str, float]]] = {}
 
-_country_cache_at: float = 0.0
-_country_cache: Dict[str, float] = {}  # {"US": 1234, ...}
-_country_cache_last_error: Optional[str] = None
+_cache_last_error_by_window: Dict[str, str] = {}
+_country_cache_last_error_by_window: Dict[str, str] = {}
 
 # duration check to avoid accidental query injection via env
 _DURATION_RE = re.compile(r"^[0-9]+(ms|s|m|h|d|w)$")
@@ -139,16 +137,17 @@ def _influx_query(q: str) -> Dict[str, Any]:
     return r.json()
 
 
-def _sanitize_window() -> str:
-    window = HEATMAP_TIME_WINDOW.strip()
+def _sanitize_window(window_raw: Optional[str]) -> str:
+    window = (window_raw or HEATMAP_TIME_WINDOW).strip()
     if not _DURATION_RE.match(window):
-        log.warning("Invalid HEATMAP_TIME_WINDOW=%r, falling back to 24h", window)
-        window = "24h"
+        log.warning("Invalid window=%r, falling back to %s", window, HEATMAP_TIME_WINDOW)
+        window = HEATMAP_TIME_WINDOW.strip()
+        if not _DURATION_RE.match(window):
+            window = "24h"
     return window
 
-
-def _build_query_points() -> str:
-    window = _sanitize_window()
+def _build_query_points(window_raw: Optional[str]) -> str:
+    window = _sanitize_window(window_raw)
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -196,9 +195,8 @@ def _parse_points(payload: Dict[str, Any]) -> List[List[float]]:
 
     return points
 
-
-def _build_query_countries() -> str:
-    window = _sanitize_window()
+def _build_query_countries(window_raw: Optional[str]) -> str:
+    window = _sanitize_window(window_raw)
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -262,61 +260,59 @@ def index() -> HTMLResponse:
 
 
 @APP.get("/data")
-def data() -> JSONResponse:
-    global _cache_at, _cache_points, _cache_last_error
-
+def data(window: Optional[str] = None) -> JSONResponse:
     now = time.time()
-    if HEATMAP_CACHE_SECONDS > 0 and (now - _cache_at) < HEATMAP_CACHE_SECONDS:
-        if DEBUG:
-            log.debug("GET /data cache-hit points=%s", len(_cache_points))
-        return JSONResponse(_cache_points)
+    win = _sanitize_window(window)
 
-    q = _build_query_points()
+    cached = _cache_points_by_window.get(win)
+    if cached and HEATMAP_CACHE_SECONDS > 0 and (now - cached[0]) < HEATMAP_CACHE_SECONDS:
+        if DEBUG:
+            log.debug("GET /data cache-hit window=%s points=%s", win, len(cached[1]))
+        return JSONResponse(cached[1])
+
+    q = _build_query_points(win)
     try:
         payload = _influx_query(q)
         pts = _parse_points(payload)
-        _cache_points = pts
-        _cache_last_error = None
-        _cache_at = now
-        log.info("GET /data points=%s", len(pts))
-        return JSONResponse(_cache_points)
+        _cache_points_by_window[win] = (now, pts)
+        _cache_last_error_by_window.pop(win, None)
+        log.info("GET /data window=%s points=%s", win, len(pts))
+        return JSONResponse(pts)
     except Exception as e:
-        _cache_last_error = repr(e)
-        log.exception("GET /data failed")
-        _cache_points = []
-        _cache_at = now
+        _cache_last_error_by_window[win] = repr(e)
+        log.exception("GET /data failed window=%s", win)
+        _cache_points_by_window[win] = (now, [])
         return JSONResponse(
-            [] if not DEBUG else {"error": "influx_query_failed", "exception": repr(e)},
+            [] if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "window": win},
             status_code=502 if DEBUG else 200,
         )
 
 
 @APP.get("/data/countries")
-def data_countries() -> JSONResponse:
-    global _country_cache_at, _country_cache, _country_cache_last_error
-
+def data_countries(window: Optional[str] = None) -> JSONResponse:
     now = time.time()
-    if HEATMAP_CACHE_SECONDS > 0 and (now - _country_cache_at) < HEATMAP_CACHE_SECONDS:
-        if DEBUG:
-            log.debug("GET /data/countries cache-hit countries=%s", len(_country_cache))
-        return JSONResponse(_country_cache)
+    win = _sanitize_window(window)
 
-    q = _build_query_countries()
+    cached = _country_cache_by_window.get(win)
+    if cached and HEATMAP_CACHE_SECONDS > 0 and (now - cached[0]) < HEATMAP_CACHE_SECONDS:
+        if DEBUG:
+            log.debug("GET /data/countries cache-hit window=%s countries=%s", win, len(cached[1]))
+        return JSONResponse(cached[1])
+
+    q = _build_query_countries(win)
     try:
         payload = _influx_query(q)
         hits = _parse_country_hits(payload)
-        _country_cache = hits
-        _country_cache_last_error = None
-        _country_cache_at = now
-        log.info("GET /data/countries countries=%s", len(hits))
-        return JSONResponse(_country_cache)
+        _country_cache_by_window[win] = (now, hits)
+        _country_cache_last_error_by_window.pop(win, None)
+        log.info("GET /data/countries window=%s countries=%s", win, len(hits))
+        return JSONResponse(hits)
     except Exception as e:
-        _country_cache_last_error = repr(e)
-        log.exception("GET /data/countries failed")
-        _country_cache = {}
-        _country_cache_at = now
+        _country_cache_last_error_by_window[win] = repr(e)
+        log.exception("GET /data/countries failed window=%s", win)
+        _country_cache_by_window[win] = (now, {})
         return JSONResponse(
-            {} if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "query": q},
+            {} if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "window": win, "query": q},
             status_code=502 if DEBUG else 200,
         )
 
