@@ -4,24 +4,13 @@ import re
 import logging
 from typing import Any, Dict, List, Tuple, Optional
 from urllib.parse import urlencode
-
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 import requests
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from rich.logging import RichHandler
-
-# -----------------------------
-# Static files (/static/*)
-# -----------------------------
-STATIC_DIR = os.getenv("STATIC_DIR", "/app/static").strip()
-if Path(STATIC_DIR).is_dir():
-    APP.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    log.info("Serving static files from %s at /static", STATIC_DIR)
-else:
-    log.warning("Static dir missing: %s (country choropleth will not render)", STATIC_DIR)
 
 APP = FastAPI(title="homepage-geoip-heatmap")
 
@@ -50,13 +39,6 @@ HEATMAP_TITLE = os.getenv("HEATMAP_TITLE", "").strip()
 INFLUX_BASE = f"http://{INFLUX_HOST}:{INFLUX_HOST_PORT}".rstrip("/")
 
 # -----------------------------
-# Serve static assets
-# -----------------------------
-# Your Dockerfile copies src/ -> /app/, so /app/static is the right path in-container.
-if os.path.isdir("/app/static"):
-    APP.mount("/static", StaticFiles(directory="/app/static"), name="static")
-
-# -----------------------------
 # Logging (pretty + simple)
 # -----------------------------
 LOG_LEVEL = "DEBUG" if DEBUG else os.getenv("LOG_LEVEL", "INFO").strip().upper()
@@ -79,6 +61,26 @@ log.info(
     HEATMAP_TIME_WINDOW,
 )
 log.info("Debug mode: %s", DEBUG)
+
+# -----------------------------
+# Static files (/static/*)
+# -----------------------------
+STATIC_DIR_CANDIDATES = [
+    os.getenv("STATIC_DIR", "/app/static").strip(),
+    "/app/src/static",
+]
+
+_static_dir = None
+for d in STATIC_DIR_CANDIDATES:
+    if Path(d).is_dir() and Path(d, "countries.geojson").is_file():
+        _static_dir = d
+        break
+
+if _static_dir:
+    APP.mount("/static", StaticFiles(directory=_static_dir), name="static")
+    log.info("Serving static files from %s at /static", _static_dir)
+else:
+    log.warning("Static dir missing (no countries.geojson found). Checked: %s", STATIC_DIR_CANDIDATES)
 
 # -----------------------------
 # Caches
@@ -278,7 +280,10 @@ def data() -> JSONResponse:
         log.exception("GET /data failed")
         _cache_points = []
         _cache_at = now
-        return JSONResponse([] if not DEBUG else {"error": "influx_query_failed", "exception": repr(e)}, status_code=502 if DEBUG else 200)
+        return JSONResponse(
+            [] if not DEBUG else {"error": "influx_query_failed", "exception": repr(e)},
+            status_code=502 if DEBUG else 200,
+        )
 
 
 @APP.get("/data/countries")
@@ -305,7 +310,10 @@ def data_countries() -> JSONResponse:
         log.exception("GET /data/countries failed")
         _country_cache = {}
         _country_cache_at = now
-        return JSONResponse({} if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "query": q}, status_code=502 if DEBUG else 200)
+        return JSONResponse(
+            {} if not DEBUG else {"error": "influx_query_failed", "exception": repr(e), "query": q},
+            status_code=502 if DEBUG else 200,
+        )
 
 
 @APP.get("/debug/query", response_class=PlainTextResponse)
