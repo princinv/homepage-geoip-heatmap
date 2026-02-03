@@ -95,6 +95,18 @@ _country_cache_by_window: Dict[str, Tuple[float, Dict[str, float]]] = {}
 _cache_last_error_by_window: Dict[str, str] = {}
 _country_cache_last_error_by_window: Dict[str, str] = {}
 
+_MAX_CACHE_KEYS = 32  # safety cap so ?window=... can't grow dicts forever
+
+def _cap_cache_sizes() -> None:
+    # simple/cheap: if it grows too large, clear it
+    if len(_cache_points_by_window) > _MAX_CACHE_KEYS:
+        _cache_points_by_window.clear()
+        _cache_last_error_by_window.clear()
+
+    if len(_country_cache_by_window) > _MAX_CACHE_KEYS:
+        _country_cache_by_window.clear()
+        _country_cache_last_error_by_window.clear()
+
 # duration check to avoid accidental query injection via env
 _DURATION_RE = re.compile(r"^[0-9]+(ms|s|m|h|d|w)$")
 
@@ -146,8 +158,8 @@ def _sanitize_window(window_raw: Optional[str]) -> str:
             window = "24h"
     return window
 
-def _build_query_points(window_raw: Optional[str]) -> str:
-    window = _sanitize_window(window_raw)
+
+def _build_query_points(window: str) -> str:
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -195,8 +207,7 @@ def _parse_points(payload: Dict[str, Any]) -> List[List[float]]:
 
     return points
 
-def _build_query_countries(window_raw: Optional[str]) -> str:
-    window = _sanitize_window(window_raw)
+def _build_query_countries(window: str) -> str:
     meas = GEO_MEASUREMENT.replace('"', "")
     return (
         f'SELECT SUM("count") AS hits '
@@ -263,6 +274,7 @@ def index() -> HTMLResponse:
 def data(window: Optional[str] = None) -> JSONResponse:
     now = time.time()
     win = _sanitize_window(window)
+    _cap_cache_sizes()
 
     cached = _cache_points_by_window.get(win)
     if cached and HEATMAP_CACHE_SECONDS > 0 and (now - cached[0]) < HEATMAP_CACHE_SECONDS:
@@ -292,6 +304,7 @@ def data(window: Optional[str] = None) -> JSONResponse:
 def data_countries(window: Optional[str] = None) -> JSONResponse:
     now = time.time()
     win = _sanitize_window(window)
+    _cap_cache_sizes()
 
     cached = _country_cache_by_window.get(win)
     if cached and HEATMAP_CACHE_SECONDS > 0 and (now - cached[0]) < HEATMAP_CACHE_SECONDS:
@@ -318,14 +331,16 @@ def data_countries(window: Optional[str] = None) -> JSONResponse:
 
 
 @APP.get("/debug/query", response_class=PlainTextResponse)
-def debug_query() -> str:
+def debug_query(window: Optional[str] = None) -> str:
     if not DEBUG:
         return "Not Found"
-    return _build_query_points()
+    win = _sanitize_window(window)
+    return _build_query_points(win)
 
 
 @APP.get("/debug/query/countries", response_class=PlainTextResponse)
-def debug_query_countries() -> str:
+def debug_query_countries(window: Optional[str] = None) -> str:
     if not DEBUG:
         return "Not Found"
-    return _build_query_countries()
+    win = _sanitize_window(window)
+    return _build_query_countries(win)

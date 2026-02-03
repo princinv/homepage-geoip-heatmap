@@ -13,6 +13,24 @@ Provides a lightweight GeoIP-derived geospatial heatmap viewer that can be embed
 - Linuxserver.io's **geoip2influxdb docker mod** (fully configured)
 - Linuxserver.io's **maxmind docker mod** (fully configured)
 
+## Features
+- Time window selector
+- Country-level *tooltip* displaying hits as an absolute number and as a percentage of total hits.
+- Dark/light mode toggle
+- Query parameters
+  - window (optional)
+    - Applies to: `GET /data` and `GET /data/countries`
+    - Example: `/data?window=6h`, `/data/countries?window=7d`
+    - Format: duration string matching `^[0-9]+(ms|s|m|h|d|w)$` (e.g. `1h`, `24h`, `7d`)
+    - If invalid or missing, falls back to `HEATMAP_TIME_WINDOW` (default `24h`)
+  - mode (optional, frontend-only)
+    - Applies to: `index.html` UI behavior (not the API)
+    - Example: `/?mode=clean`, `/?mode=full`, `/?mode=map-only`
+    - Behavior:
+      - `clean`: hides debug + toggles (minimal chrome)
+      - `full`: shows full UI (debug/toggles/HUD placeholders)
+      - `map-only`: intended for embedded/readonly display (UI hidden; map interactions can be disabled)
+
 ## Environment
 | Variable | Default | Notes |
 |---|---:|---|
@@ -42,7 +60,7 @@ This project is intended to be used alongside the following upstream projects:
 - linuxserver.io SWAG dashboard / Geoip2influxdb ecosystem: https://github.com/linuxserver/docker-mods
 - InfluxDB v1 (time series backend): https://github.com/influxdata/influxdb
 
-# Roadmap
+## Roadmap
 - [x] ~~Highlight country~~
 - [x] ~~Set `minZoom` and `maxBounds` and optionally `WorldCopyJump`~~
 - [x] ~~Add border~~

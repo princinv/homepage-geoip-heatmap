@@ -124,11 +124,47 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
   <script>
+    const Q = getQuery();
+
     const dbg = (msg) => {
+      if (!Q.showDebug) return;
       const el = document.getElementById('debug');
       if (el) el.textContent = msg;
       console.log('[debug]', msg);
     };
+
+    function getQuery() {
+      const p = new URLSearchParams(window.location.search || '');
+      const mode = (p.get('mode') || '').toLowerCase();
+    
+      return {
+        mode: mode || 'full',
+        showDebug: mode !== 'clean' && mode !== 'map-only',
+        showThemeToggle: mode !== 'clean' && mode !== 'map-only',
+        showHud: mode === 'full',
+        showLegend: mode === 'full',
+        mapOnly: mode === 'map-only',
+    
+        // NEW: optional overrides
+        window: p.get('window') || null,     // e.g. 24h, 7d
+        theme: p.get('theme') || null,       // dark|light|auto
+        refresh: p.get('refresh') || null,   // seconds
+      };
+    }
+    
+    function setVisible(id, on) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = on ? '' : 'none';
+    }
+    
+    setVisible('debug', Q.showDebug);
+    setVisible('themeToggle', Q.showThemeToggle);
+    
+    // If you later add a HUD div like <div id="hud"></div>:
+    setVisible('hud', Q.showHud);
+    // If you later add a legend div like <div id="legend"></div>:
+    setVisible('legend', Q.showLegend);
 
     const THEME_KEY = 'geoip_theme_mode'; // remembers user's choice
     const WINDOW_KEY = 'geoip_time_window'; // remembers selected time window
@@ -200,9 +236,19 @@
 
     const map = L.map('map', {
       zoomControl: false,
-      worldCopyJump: false,  // don't jump copies
+      worldCopyJump: false,
       maxBoundsViscosity: 1.0
     }).setView([20, 0], 2);
+    
+    if (Q.mapOnly) {
+      map.dragging.disable();
+      map.scrollWheelZoom.disable();
+      map.doubleClickZoom.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+      if (map.tap) map.tap.disable();
+      map.touchZoom.disable();
+    }
 
     const tiles = {
       dark:  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -502,14 +548,17 @@
       // cfg.theme_mode should come from backend env var THEME_MODE, default "auto"
       const cfgMode = normalizeMode(cfg && cfg.theme_mode ? cfg.theme_mode : 'auto');
       const rawSaved = localStorage.getItem(THEME_KEY);
-      const initialMode = rawSaved ? normalizeMode(rawSaved) : cfgMode;
+      const queryTheme = normalizeMode(Q.theme);
+      const initialMode = Q.theme ? queryTheme : (rawSaved ? normalizeMode(rawSaved) : cfgMode);
       
       bindThemeToggle(initialMode);
-
+      
       // Default time window from backend config (env HEATMAP_TIME_WINDOW), override by localStorage
       const defaultWin = (cfg && cfg.time_window) ? String(cfg.time_window) : '24h';
       const rawWin = localStorage.getItem(WINDOW_KEY);
-      setWindow(rawWin || defaultWin);
+      const queryWin = Q.window ? String(Q.window) : null;
+
+      setWindow(queryWin || rawWin || defaultWin);
 
       const sel = document.getElementById('windowSelect');
       if (sel) {
@@ -527,7 +576,9 @@
         throw e;
       }
 
-      const refreshMs = Math.max(5, Number(cfg.refresh_seconds || 30)) * 1000;
+      const cfgRefresh = Math.max(5, Number(cfg.refresh_seconds || 30));
+      const queryRefresh = Q.refresh ? Math.max(5, Number(Q.refresh)) : null;
+      const refreshMs = (queryRefresh || cfgRefresh) * 1000;
       setInterval(async () => {
         try {
           await refreshAll();
