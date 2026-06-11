@@ -1,0 +1,55 @@
+name: Deploy homepage-geoip-heatmap
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy"
+        required: false
+        default: "latest"
+        type: string
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy"
+        required: false
+        default: "latest"
+        type: string
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, ARM64, swarm, homepage-geoip-heatmap, deploy]
+    timeout-minutes: 10
+    steps:
+      - name: Deploy homepage-geoip-heatmap
+        shell: bash
+        run: |
+          set -exo pipefail
+
+          export PAGER=cat
+          export GH_PAGER=cat
+          export GIT_PAGER=cat
+          export SYSTEMD_PAGER=cat
+          export SYSTEMD_LESS=
+
+          export DOCKER_CONFIG="${RUNNER_TEMP:-/tmp}/docker-config"
+          mkdir -p "${DOCKER_CONFIG}"
+
+          image_tag="${{ inputs.image_tag || 'latest' }}"
+
+          echo "Deploying homepage-geoip-heatmap image with tag: ${image_tag}"
+
+          docker service ls | grep -E 'homepage-geoip-heatmap|NAME'
+
+          cat /srv/docker/secrets/ghcr_read_token.secret | docker login ghcr.io -u princinv --password-stdin
+
+          docker pull "ghcr.io/princinv/homepage-geoip-heatmap:${image_tag}"
+
+          docker service update \
+            --with-registry-auth \
+            --detach=false \
+            --image "ghcr.io/princinv/homepage-geoip-heatmap:${image_tag}" \
+            swarm-proxy_homepage-geoip-heatmap
+
+          docker service ls | grep -E 'homepage-geoip-heatmap|NAME'
+          docker service ps swarm-proxy_homepage-geoip-heatmap --no-trunc
