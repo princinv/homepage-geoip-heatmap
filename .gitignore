@@ -77,3 +77,107 @@ log/
 
 # Local context archive staging
 .context-build/
+
+# ==========================================
+# Shared Generic Ignores
+# ==========================================
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Local temp/cache
+tmp/
+temp/
+.cache/
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+!.env.test
+secrets/
+**/secrets/
+*.secret
+*.enc
+*.pem
+*.key
+*.crt
+*.p12
+id_rsa
+id_ed25519
+
+# Python
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+*/.venv/
+*/venv/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+
+# Node / frontend
+node_modules/
+*/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+dist/
+build/
+coverage/
+out/
+.output/
+.next/
+
+# Svelte / Vite
+.svelte-kit/
+*/.svelte-kit/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+test-results/
+playwright-report/
+
+# Archives / generated packages
+*.tar
+*.tar.*
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+
+# Logs and runtime data
+logs/
+log/
+*.log
+data/*
+!data/.gitkeep
+*.sqlite
+*.sqlite3
+*.db
+
+# LLM workflow
+.context-build/
+.llm-workflows/archives/*.tar.gz
+.llm-workflows/archives/*.tgz
+.scratch/*
+!.scratch/.gitkeep
