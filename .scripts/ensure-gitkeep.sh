@@ -113,9 +113,12 @@ main() {
       -path './.context-build' -prune -o \
       -path './.llm-workflows/archives' -prune -o \
       -path './node_modules' -prune -o \
+      -path './.svelte-kit' -prune -o \
+      -path '*/.svelte-kit' -prune -o \
       -path './.venv' -prune -o \
       -path './venv' -prune -o \
       -path './dist' -prune -o \
+      -path './frontend/.svelte-kit' -prune -o \
       -path './build' -prune -o \
       -path './coverage' -prune -o \
       -path '*/__pycache__' -prune -o \
