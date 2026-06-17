@@ -125,6 +125,13 @@ main() {
     include_if_exists "$path" "$staging"
   done
 
+  framework_embedder="${ENGINEERING_FRAMEWORK_REPO:-/srv/docker/repos/engineering-framework}/.scripts/embed-framework-archive.sh"
+  if [[ -x "$framework_embedder" ]]; then
+    "$framework_embedder" "$staging"
+  else
+    echo "WARN: engineering-framework embedder not found: $framework_embedder" >&2
+  fi
+
   mkdir -p "$staging/context"
 
   (
