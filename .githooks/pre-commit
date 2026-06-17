@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "Running pre-commit validation..."
+
+.scripts/ensure-gitkeep.sh --fix
+
+git add -A
+
+git diff --cached --check
+
+.scripts/ensure-gitkeep.sh --check
+
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "Running staged secret scan with gitleaks..."
+  gitleaks protect --staged --redact
+else
+  echo "Skipping gitleaks secret scan; gitleaks is not installed."
+fi
+
+echo "Pre-commit validation passed."

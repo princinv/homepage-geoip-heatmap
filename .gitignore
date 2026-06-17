@@ -66,3 +66,14 @@ log/
 *.log
 
 
+
+# Local scratch workspace
+.scratch/*
+!.scratch/.gitkeep
+
+# Generated LLM/project archives
+.llm-workflows/archives/*.tar.gz
+.llm-workflows/archives/*.tgz
+
+# Local context archive staging
+.context-build/
