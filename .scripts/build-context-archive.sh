@@ -16,6 +16,51 @@ set -euo pipefail
 
 PROJECT_NAME="homepage-geoip-heatmap"
 ARCHIVE_ROOT=".llm-workflows/archives"
+RETENTION_COUNT=5
+
+resolve_repo_root() {
+  if [[ -n "${repo_root:-}" ]]; then
+    printf '%s\n' "$repo_root"
+    return 0
+  fi
+
+  git rev-parse --show-toplevel
+}
+
+prune_old_archives() {
+  local resolved_repo_root
+  local archive_dir
+
+  resolved_repo_root="$(resolve_repo_root)" || return 0
+  archive_dir="$resolved_repo_root/$ARCHIVE_ROOT"
+
+  if [[ ! -d "$archive_dir" ]]; then
+    return 0
+  fi
+
+  find "$archive_dir" -maxdepth 1 -type f \
+    \( -name '*.tar.gz' -o -name '*.tgz' -o -name '*.zip' \) \
+    -printf '%T@ %p\n' \
+    | sort -rn \
+    | awk -v keep="$RETENTION_COUNT" 'NR > keep { sub(/^[^ ]+ /, ""); print }' \
+    | while IFS= read -r old_archive; do
+        rm -f -- "$old_archive"
+      done
+}
+
+cleanup_context_build() {
+  local resolved_repo_root
+
+  resolved_repo_root="$(resolve_repo_root 2>/dev/null)" || return 0
+
+  if [[ -d "$resolved_repo_root/.context-build" ]]; then
+    rm -rf -- "$resolved_repo_root/.context-build"
+  fi
+}
+
+
+
+
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 # ------------------------------------------
@@ -157,5 +202,9 @@ main() {
 
   echo "OK: archive excludes noisy paths"
 }
+trap cleanup_context_build EXIT
 
 main "$@"
+
+
+prune_old_archives
