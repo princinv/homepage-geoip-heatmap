@@ -4,26 +4,38 @@ set -u
 
 ASSETS_MIRROR_ROOT="${ASSETS_MIRROR_ROOT:-/srv/docker/repos/assets}"
 MODE="check"
-DELETE_EXTRAS="false"
-ALLOW_EXTRAS="false"
+CONFLICT_POLICY="fail"
 VERBOSE="false"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  .scripts/sync-assets-mirror.sh --check [--allow-extra] [--verbose]
-  .scripts/sync-assets-mirror.sh --sync [--delete] [--verbose]
+  .scripts/sync-assets-mirror.sh --check [--verbose]
+  .scripts/sync-assets-mirror.sh --sync [--prefer-central|--prefer-local] [--verbose]
 
-Central assets are authoritative:
-  /srv/docker/repos/assets/<repo-name>/...
+Central assets folder:
+  /srv/docker/repos/assets/<repo-name>/
 
-Project assets are the synced mirror:
-  <repo>/assets/...
+Project assets folder:
+  <repo>/assets/
 
-Default repo-name resolution:
-  1. .assets-mirror-name file
-  2. origin remote basename
-  3. repository directory basename
+Behavior:
+  --check
+      Strict equality check. Relative paths and file contents must match.
+
+  --sync
+      Bidirectional union sync. Files that exist only on one side are copied to
+      the other side. Same relative path with different contents is a conflict.
+
+  --prefer-central
+      During --sync, central assets overwrite project assets on conflicts.
+
+  --prefer-local
+      During --sync, project assets overwrite central assets on conflicts.
+
+Notes:
+  Deletions are not inferred bidirectionally. Delete intentionally from both
+  sides, or resolve with an explicit prefer mode if there is a content conflict.
 USAGE
 }
 
@@ -35,14 +47,11 @@ while [[ "$#" -gt 0 ]]; do
     --sync)
       MODE="sync"
       ;;
-    --delete)
-      DELETE_EXTRAS="true"
+    --prefer-central)
+      CONFLICT_POLICY="central"
       ;;
-    --allow-extra|--allow-extras)
-      ALLOW_EXTRAS="true"
-      ;;
-    --strict)
-      ALLOW_EXTRAS="false"
+    --prefer-local)
+      CONFLICT_POLICY="local"
       ;;
     --verbose)
       VERBOSE="true"
@@ -95,6 +104,14 @@ sha_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
+copy_file() {
+  local source_file="$1"
+  local target_file="$2"
+
+  mkdir -p "$(dirname "$target_file")"
+  cp -a -- "$source_file" "$target_file"
+}
+
 repo_root="$(resolve_repo_root)"
 mirror_name="$(resolve_mirror_name)"
 central_dir="$ASSETS_MIRROR_ROOT/$mirror_name"
@@ -106,90 +123,122 @@ if [[ ! -d "$ASSETS_MIRROR_ROOT" ]]; then
 fi
 
 if [[ ! -d "$central_dir" ]]; then
-  echo "SKIP: no central assets folder for $mirror_name"
-  exit 0
-fi
+  local_count="$(
+    find "$local_dir" -type f ! -name '.gitkeep' 2>/dev/null | wc -l
+  )"
 
-central_count="$(
-  find "$central_dir" -type f ! -name '.gitkeep' | wc -l
-)"
-
-if [[ "$central_count" -eq 0 ]]; then
-  echo "SKIP: central assets folder is empty for $mirror_name"
-  exit 0
-fi
-
-mkdir -p "$local_dir"
-
-if [[ "$MODE" == "sync" ]]; then
-  rsync_args=(-a --exclude '.gitkeep')
-
-  if [[ "$DELETE_EXTRAS" == "true" ]]; then
-    rsync_args+=(--delete)
+  if [[ "$local_count" -eq 0 ]]; then
+    echo "SKIP: no central assets folder for $mirror_name"
+    exit 0
   fi
 
-  rsync "${rsync_args[@]}" "$central_dir/" "$local_dir/"
-
-  echo "Synced assets for $mirror_name:"
-  echo "  from: $central_dir/"
-  echo "  to:   $local_dir/"
-
-  if [[ "$DELETE_EXTRAS" != "true" ]]; then
-    echo "Note: local extra files were not deleted."
+  if [[ "$MODE" == "sync" ]]; then
+    mkdir -p "$central_dir"
+    echo "Created central assets folder for $mirror_name: $central_dir"
+  else
+    echo "ERROR: local assets exist but central folder is missing for $mirror_name"
+    echo "Run --sync to create/populate the central folder, or create it manually."
+    exit 1
   fi
 fi
 
-missing=0
-mismatch=0
-extra=0
+mkdir -p "$local_dir" "$central_dir"
+
+declare -A rels=()
 
 while IFS= read -r -d '' central_file; do
   rel="${central_file#"$central_dir/"}"
-  local_file="$local_dir/$rel"
-
-  if [[ ! -f "$local_file" ]]; then
-    echo "MISSING: assets/$rel"
-    missing=$((missing + 1))
-    continue
-  fi
-
-  central_sha="$(sha_file "$central_file")"
-  local_sha="$(sha_file "$local_file")"
-
-  if [[ "$central_sha" != "$local_sha" ]]; then
-    echo "MISMATCH: assets/$rel"
-    mismatch=$((mismatch + 1))
-    continue
-  fi
-
-  if [[ "$VERBOSE" == "true" ]]; then
-    echo "OK: assets/$rel"
-  fi
+  rels["$rel"]=1
 done < <(find "$central_dir" -type f ! -name '.gitkeep' -print0 | sort -z)
 
 while IFS= read -r -d '' local_file; do
   rel="${local_file#"$local_dir/"}"
-  central_file="$central_dir/$rel"
-
-  if [[ ! -f "$central_file" ]]; then
-    echo "EXTRA: assets/$rel"
-    extra=$((extra + 1))
-  fi
+  rels["$rel"]=1
 done < <(find "$local_dir" -type f ! -name '.gitkeep' -print0 | sort -z)
 
-if [[ "$missing" -gt 0 || "$mismatch" -gt 0 ]]; then
-  echo "ERROR: assets mirror is missing or mismatched for $mirror_name"
-  exit 1
+if [[ "${#rels[@]}" -eq 0 ]]; then
+  echo "OK: no real assets for $mirror_name"
+  exit 0
 fi
 
-if [[ "$extra" -gt 0 && "$ALLOW_EXTRAS" != "true" ]]; then
-  echo "ERROR: assets mirror has extra local files for $mirror_name"
-  echo "Run with --sync --delete to make the project folder exactly match central assets."
-  exit 1
+changes=0
+problems=0
+
+for rel in "${(@k)rels}"; do
+  central_file="$central_dir/$rel"
+  local_file="$local_dir/$rel"
+
+  central_exists="false"
+  local_exists="false"
+
+  [[ -f "$central_file" ]] && central_exists="true"
+  [[ -f "$local_file" ]] && local_exists="true"
+
+  if [[ "$central_exists" == "true" && "$local_exists" == "true" ]]; then
+    central_sha="$(sha_file "$central_file")"
+    local_sha="$(sha_file "$local_file")"
+
+    if [[ "$central_sha" == "$local_sha" ]]; then
+      if [[ "$VERBOSE" == "true" ]]; then
+        echo "OK: assets/$rel"
+      fi
+      continue
+    fi
+
+    if [[ "$MODE" == "sync" && "$CONFLICT_POLICY" == "central" ]]; then
+      copy_file "$central_file" "$local_file"
+      echo "UPDATED FROM CENTRAL: assets/$rel"
+      changes=$((changes + 1))
+      continue
+    fi
+
+    if [[ "$MODE" == "sync" && "$CONFLICT_POLICY" == "local" ]]; then
+      copy_file "$local_file" "$central_file"
+      echo "UPDATED FROM LOCAL: assets/$rel"
+      changes=$((changes + 1))
+      continue
+    fi
+
+    echo "CONFLICT: assets/$rel differs between central and local"
+    echo "  central: $central_file"
+    echo "  local:   $local_file"
+    echo "Resolve manually, or rerun --sync with --prefer-central or --prefer-local."
+    problems=$((problems + 1))
+    continue
+  fi
+
+  if [[ "$central_exists" == "true" && "$local_exists" != "true" ]]; then
+    if [[ "$MODE" == "sync" ]]; then
+      copy_file "$central_file" "$local_file"
+      echo "COPIED TO LOCAL: assets/$rel"
+      changes=$((changes + 1))
+    else
+      echo "MISSING LOCAL: assets/$rel"
+      problems=$((problems + 1))
+    fi
+    continue
+  fi
+
+  if [[ "$local_exists" == "true" && "$central_exists" != "true" ]]; then
+    if [[ "$MODE" == "sync" ]]; then
+      copy_file "$local_file" "$central_file"
+      echo "COPIED TO CENTRAL: assets/$rel"
+      changes=$((changes + 1))
+    else
+      echo "MISSING CENTRAL: assets/$rel"
+      problems=$((problems + 1))
+    fi
+    continue
+  fi
+done
+
+if [[ "$MODE" == "sync" && "$changes" -gt 0 ]]; then
+  echo "Synced $changes asset file(s) for $mirror_name"
 fi
 
-if [[ "$extra" -gt 0 ]]; then
-  echo "WARN: assets mirror has $extra extra local file(s), allowed for first pass."
+if [[ "$problems" -gt 0 ]]; then
+  echo "ERROR: assets mirror is not synchronized for $mirror_name"
+  exit 1
 fi
 
 echo "OK: assets mirror valid for $mirror_name"
