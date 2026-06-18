@@ -181,3 +181,11 @@ data/*
 .llm-workflows/archives/*.tgz
 .scratch/*
 !.scratch/.gitkeep
+
+# universal repo skeleton / generated outputs
+.llm-workflows/archives/*.zip
+!.llm-workflows/archives/.gitkeep
+/*context*.tar.gz
+/*archive*.tar.gz
+/dotfiles-context-*.tar.gz
+/ansible-context-*.tar.gz
