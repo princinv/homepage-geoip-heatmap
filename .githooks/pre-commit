@@ -25,7 +25,7 @@ echo "Pre-commit validation passed."
 
 echo "Verifying assets mirror..."
 if [[ -x .scripts/sync-assets-mirror.sh ]]; then
-  .scripts/sync-assets-mirror.sh --check --allow-extra
+  .scripts/sync-assets-mirror.sh --check
 else
   echo "WARN: .scripts/sync-assets-mirror.sh is missing or not executable"
 fi
