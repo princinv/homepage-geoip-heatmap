@@ -164,7 +164,7 @@ fi
 changes=0
 problems=0
 
-for rel in "${(@k)rels}"; do
+while IFS= read -r -d '' rel; do
   central_file="$central_dir/$rel"
   local_file="$local_dir/$rel"
 
@@ -230,7 +230,7 @@ for rel in "${(@k)rels}"; do
     fi
     continue
   fi
-done
+done < <(printf '%s\0' "${!rels[@]}" | sort -z)
 
 if [[ "$MODE" == "sync" && "$changes" -gt 0 ]]; then
   echo "Synced $changes asset file(s) for $mirror_name"
